@@ -1,0 +1,220 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
+import { int, num, pct, scoreTone, tone } from "@/lib/format";
+import ReportPanel from "./ReportPanel";
+import SymbolAnalytics from "./SymbolAnalytics";
+
+type SortKey = "score" | "net" | "win" | "pf" | "trades" | "dd" | "edge" | "title" | "tf";
+const PAGE = 50;
+
+export default function SymbolView({ symbol }: { symbol: string }) {
+  const [data, setData] = useState<SymbolData | null>(null);
+  const [strategies, setStrategies] = useState<Record<string, Strategy>>({});
+  const [details, setDetails] = useState<Map<string, RunDetail> | null>(null);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
+  const [tf, setTf] = useState("");
+  const [src, setSrc] = useState<"" | "tv" | "ts">("");
+  const [heldOnly, setHeldOnly] = useState(false);
+  const [showRepaint, setShowRepaint] = useState(false);
+  const [minTrades, setMinTrades] = useState(30);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortKey>("score");
+  const [dir, setDir] = useState<1 | -1>(-1);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Run | null>(null);
+
+  useEffect(() => {
+    setData(null); setDetails(null); setSelected(null);
+    loadSymbol(symbol).then(setData).catch((e) => setError(String(e)));
+    loadStrategies().then(setStrategies);
+  }, [symbol]);
+  // the report data is larger: fetch it once a row is opened
+  useEffect(() => { if (selected && !details) loadDetails(symbol).then(setDetails); }, [selected, details, symbol]);
+  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, minTrades, q, sort, dir]);
+
+  const title = (r: Run) => strategies[r.sid]?.title ?? r.sid;
+  const rows = useMemo(() => {
+    if (!data) return [];
+    const s = q.trim().toLowerCase();
+    const out = data.runs.filter((r) =>
+      (!tf || r.tf === tf) && (!src || r.src === src) && (!heldOnly || r.held) &&
+      (showRepaint || r.repaint !== "repaints") && (r.trades ?? 0) >= minTrades &&
+      (!strategies[r.sid]?.dup_of) && (!s || title(r).toLowerCase().includes(s)));
+    const val = (r: Run): any => sort === "title" ? title(r).toLowerCase() : sort === "tf" ? TIMEFRAMES.indexOf(r.tf as any) : r[sort];
+    return out.sort((a, b) => {
+      const av = val(a), bv = val(b);
+      if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  }, [data, tf, src, heldOnly, showRepaint, minTrades, q, sort, dir, strategies]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  function sortBy(k: SortKey) {
+    if (sort === k) setDir((d) => (d === 1 ? -1 : 1));
+    else { setSort(k); setDir(k === "title" || k === "tf" ? 1 : -1); }
+  }
+  function downloadCsv() {
+    const head = ["strategy", "source", "timeframe", "score", "held_up", "repaint", "net_pct", "max_dd", "trades", "win_rate", "profit_factor", "avg_trade_pct", "beat_buy_hold", "from"];
+    const esc = (v: any) => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const body = rows.map((r) => [title(r), SOURCE_LABEL[r.src], r.tf, r.score, r.held, r.repaint, r.net, r.dd, r.trades, r.win, r.pf, r.avg, r.edge, r.from].map(esc).join(","));
+    const url = URL.createObjectURL(new Blob([[head.join(","), ...body].join("\n")], { type: "text/csv" }));
+    const a = document.createElement("a"); a.href = url; a.download = `${symbol}_backtests.csv`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  if (error) return <p className="text-loss">Could not load {symbol}: {error}</p>;
+  const shown = rows.slice((page - 1) * PAGE, page * PAGE);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+
+  return (
+    <div className="mx-auto flex max-w-[1500px] flex-col gap-5">
+      <nav className="text-sm text-ink-faint" aria-label="Breadcrumb">
+        <Link href="/symbols" className="hover:text-ink">Symbols</Link> <span className="px-1">/</span>
+        <span className="text-ink-dim">{data ? `${data.name} (${data.exchange ? data.exchange + ":" : ""}${symbol})` : symbol}</span>
+      </nav>
+
+      <header className="flex flex-wrap items-end gap-x-5 gap-y-2">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{data?.name ?? symbol}</h1>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {(data?.lists ?? []).map((l) => (
+              <Link key={l} href={`/symbols?list=${encodeURIComponent(l)}`} className="rounded-full border border-line px-2 py-0.5 text-xs text-ink-dim hover:text-ink">{l}</Link>
+            ))}
+          </div>
+        </div>
+        {data?.last && (
+          <div className="flex items-baseline gap-2">
+            <span className="num text-3xl">{num(data.last.close)}</span>
+            <span className={`num text-sm ${tone(data.last.chg_pct)}`}>{pct(data.last.chg_pct)}</span>
+            <span className="text-xs text-ink-faint">close {data.last.date}</span>
+          </div>
+        )}
+      </header>
+
+      <div className="flex gap-1 self-start rounded-lg border border-line bg-panel p-1">
+        {(["strategies", "analytics"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`rounded-md px-3 py-1.5 text-sm capitalize ${tab === t ? "bg-panel-2 text-ink" : "text-ink-dim hover:text-ink"}`}>
+            {t === "strategies" ? `Strategies${data ? ` (${int(rows.length)})` : ""}` : "Analytics"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "analytics" && data && <SymbolAnalytics data={data} strategies={strategies} onOpen={(r) => { setTab("strategies"); setSelected(r); }} />}
+
+      {tab === "strategies" && (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
+          <section className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-2.5">
+              <Pills value={tf} onChange={setTf} options={[["", "All TF"], ...TIMEFRAMES.map((t) => [t, t] as [string, string])]} />
+              <Pills value={src} onChange={(v) => setSrc(v as any)} options={[["", "All sources"], ["tv", "TradingView"], ["ts", "TrendSpider"]]} />
+              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
+                <input id="held-only" type="checkbox" checked={heldOnly} onChange={(e) => setHeldOnly(e.target.checked)} className="accent-[var(--color-signal)]" />
+                Held up only
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
+                <input id="show-repaint" type="checkbox" checked={showRepaint} onChange={(e) => setShowRepaint(e.target.checked)} className="accent-[var(--color-signal)]" />
+                Show repainting
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
+                Min trades
+                <input id="min-trades" type="number" min={0} value={minTrades} onChange={(e) => setMinTrades(Number(e.target.value) || 0)}
+                  className="num w-16 rounded-md border border-line bg-ground px-2 py-1 text-sm outline-none" />
+              </label>
+              <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
+                className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-sm outline-none focus:border-signal/60" />
+              <button onClick={downloadCsv} className="rounded-md border border-line px-2.5 py-1 text-sm text-ink-dim hover:text-ink" title="Download these rows as CSV">CSV</button>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-panel text-left text-[0.7rem] uppercase tracking-wider text-ink-faint">
+                  <tr>
+                    <Th k="title" label="Strategy" sort={sort} dir={dir} on={sortBy} />
+                    <Th k="tf" label="TF" sort={sort} dir={dir} on={sortBy} />
+                    <Th k="score" label="Score" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="net" label="Net %" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="win" label="Win %" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="pf" label="PF" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="trades" label="Trades" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="dd" label="Max DD" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="edge" label="vs Hold" sort={sort} dir={dir} on={sortBy} right />
+                  </tr>
+                </thead>
+                <tbody>
+                  {!data && Array.from({ length: 10 }).map((_, i) => (
+                    <tr key={i}><td colSpan={9} className="px-3 py-2"><div className="h-5 animate-pulse rounded bg-panel-2" /></td></tr>
+                  ))}
+                  {shown.map((r) => (
+                    <tr key={r.id} onClick={() => setSelected(r)}
+                      className={`cursor-pointer border-t border-line-soft ${selected?.id === r.id ? "bg-signal-soft/60" : "hover:bg-panel"}`}>
+                      <td className="max-w-[22rem] px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate">{title(r)}</span>
+                          {r.held && <span title="Held up: profitable per trade early and recently, beat holding" className="text-gain">✓</span>}
+                          {r.repaint === "repaints" && <span className="rounded bg-loss/15 px-1 text-[0.62rem] font-semibold text-loss">REPAINTS</span>}
+                        </div>
+                        <div className="text-[0.7rem] text-ink-faint">{SOURCE_LABEL[r.src]}</div>
+                      </td>
+                      <td className="px-3 py-2 text-ink-dim">{r.tf}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span className={`num rounded px-1.5 py-0.5 text-xs font-semibold ${scoreTone(r.score)}`}>{r.score ?? "—"}</span>
+                      </td>
+                      <td className={`num px-3 py-2 text-right ${tone(r.net)}`}>{pct(r.net, 1)}</td>
+                      <td className="num px-3 py-2 text-right">{num(r.win, 1)}</td>
+                      <td className="num px-3 py-2 text-right">{num(r.pf)}</td>
+                      <td className="num px-3 py-2 text-right">{int(r.trades)}</td>
+                      <td className="num px-3 py-2 text-right text-loss">{r.dd == null ? "—" : num(-Math.abs(r.dd), 1)}</td>
+                      <td className={`num px-3 py-2 text-right ${tone(r.edge)}`}>{r.edge == null ? "—" : pct(r.edge, r.src === "ts" ? 1 : 2)}</td>
+                    </tr>
+                  ))}
+                  {data && shown.length === 0 && (
+                    <tr><td colSpan={9} className="px-3 py-10 text-center text-ink-dim">No backtests match these filters.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {data && (
+              <div className="flex items-center justify-between text-sm text-ink-dim">
+                <span>{int(rows.length)} backtests · duplicates hidden</span>
+                <div className="flex items-center gap-2">
+                  <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-md border border-line px-2.5 py-1 disabled:opacity-40">←</button>
+                  <span className="num">{page} / {pages}</span>
+                  <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-md border border-line px-2.5 py-1 disabled:opacity-40">→</button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <ReportPanel run={selected} detail={selected ? details?.get(selected.id) ?? null : null} loading={!!selected && !details}
+            strategy={selected ? strategies[selected.sid] : undefined} symbol={symbol} name={data?.name ?? symbol}
+            onClose={() => setSelected(null)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Pills({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return (
+    <div className="flex overflow-hidden rounded-md border border-line">
+      {options.map(([v, l]) => (
+        <button key={v || "all"} onClick={() => onChange(v)}
+          className={`px-2.5 py-1 text-sm ${value === v ? "bg-signal-soft text-signal" : "text-ink-dim hover:bg-panel-2 hover:text-ink"}`}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+function Th({ k, label, sort, dir, on, right }: { k: SortKey; label: string; sort: SortKey; dir: 1 | -1; on: (k: SortKey) => void; right?: boolean }) {
+  const active = sort === k;
+  return (
+    <th className={`whitespace-nowrap px-3 py-2.5 font-semibold ${right ? "text-right" : ""}`} aria-sort={active ? (dir === 1 ? "ascending" : "descending") : "none"}>
+      <button onClick={() => on(k)} className={`uppercase tracking-wider ${active ? "text-signal" : "hover:text-ink"}`}>
+        {label}{active ? (dir === 1 ? " ↑" : " ↓") : ""}
+      </button>
+    </th>
+  );
+}

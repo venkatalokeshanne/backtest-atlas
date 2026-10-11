@@ -1,0 +1,37 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+/* Backtest Atlas: graphite ground, cool slate panels, one cyan signal colour; gains/losses keep their own pair. */
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-ground: #0c0e12;
+  --color-panel: #12161c;
+  --color-panel-2: #1a1f27;
+  --color-line: #252b35;
+  --color-line-soft: #1b2028;
+  --color-ink: #e7eaf0;
+  --color-ink-dim: #8a93a3;
+  --color-ink-faint: #5d6575;
+  --color-signal: #4cc9f0;
+  --color-signal-soft: #0f2a35;
+  --color-gain: #34d399;
+  --color-loss: #f87171;
+  --color-warn: #fbbf24;
+}
+
+html { color-scheme: dark; }
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+* { border-color: var(--color-line); }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+::-webkit-scrollbar { height: 10px; width: 10px; }
+::-webkit-scrollbar-thumb { background: var(--color-line); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+:focus-visible { outline: 2px solid var(--color-signal); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
