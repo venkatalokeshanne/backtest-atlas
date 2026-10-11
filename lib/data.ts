@@ -17,7 +17,10 @@ export type Run = {
   repaint: "repaints" | "vectors_present" | "clean" | null; breadth: [number, number];
   net: number | null; dd: number | null; trades: number | null; win: number | null; pf: number | null;
   avg: number | null; edge: number | null; bh: number | null; from: string | null;
+  /** net % over the trailing 1 / 3 / 6 months, counted back from `asof` (TradingView: last bar; TrendSpider: its run date) */
+  m1: number | null; m3: number | null; m6: number | null; asof: string | null;
 };
+export type PeriodStat = { n: number; net?: number; win?: number; pf?: number | null };
 export type Window = { n?: number; avg?: number; pf?: number; win?: number; net?: number; dd?: number; edge?: number; bh?: number; from?: string };
 export type RunDetail = {
   id: string; parts: Record<"consistency" | "breadth" | "edge" | "practicality", number>;
@@ -25,6 +28,7 @@ export type RunDetail = {
   sharpe: number | null; sortino: number | null; tpm: number | null; to: string | null; bars: number | null;
   windows: Record<string, Window>;
   curve: { t: string[]; s: number[]; b: number[]; start: string } | null;
+  recent: { p1m: PeriodStat; p3m: PeriodStat; p6m: PeriodStat; months: (PeriodStat & { m: string })[] } | null;
 };
 export type SymbolData = {
   symbol: string; name: string; exchange: string; type: string;

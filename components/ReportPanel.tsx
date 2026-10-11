@@ -89,6 +89,8 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
         ) : <div className="h-24 animate-pulse rounded-lg bg-panel-2" />}
       </section>
 
+      <Recent run={run} detail={detail} />
+
       {detail && Object.keys(detail.windows).length > 0 && (
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Early vs recent</h3>
@@ -161,6 +163,86 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
         <div className="max-h-[88vh] w-full overflow-y-auto rounded-t-2xl border-t border-line bg-panel p-4" onClick={(e) => e.stopPropagation()}>{body}</div>
       </div>
     </>
+  );
+}
+
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthLabel = (m: string) => `${MONTH[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
+
+/** Trailing 1 / 3 / 6 months and each of the last 6 calendar months (the current one is month-to-date). */
+function Recent({ run, detail }: { run: Run; detail: RunDetail | null }) {
+  const r = detail?.recent;
+  if (!r && run.m1 == null && run.m3 == null && run.m6 == null) {
+    return (
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Recent performance</h3>
+        <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-faint">Not computed for this backtest yet.</p>
+      </section>
+    );
+  }
+  const rows: [string, { n?: number; net?: number | null; win?: number; pf?: number | null }][] = r
+    ? [["Last month", r.p1m], ["Last 3 months", r.p3m], ["Last 6 months", r.p6m]]
+    : [["Last month", { net: run.m1 }], ["Last 3 months", { net: run.m3 }], ["Last 6 months", { net: run.m6 }]];
+  const months = r?.months ?? [];
+  const max = Math.max(1, ...months.map((m) => Math.abs(m.net ?? 0)));
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+        Recent performance <span className="normal-case tracking-normal">· to {run.asof ?? "—"}</span>
+      </h3>
+      <div className="overflow-x-auto rounded-lg border border-line">
+        <table className="w-full text-sm">
+          <thead className="bg-panel text-[0.68rem] uppercase tracking-wider text-ink-faint">
+            <tr><th className="px-2.5 py-2 text-left">Period</th><th className="px-2.5 py-2 text-right">Trades</th>
+              <th className="px-2.5 py-2 text-right">Net %</th><th className="px-2.5 py-2 text-right">Win %</th>
+              <th className="px-2.5 py-2 text-right">PF</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(([k, p]) => (
+              <tr key={k} className="border-t border-line-soft">
+                <td className="px-2.5 py-1.5 text-ink-dim">{k}</td>
+                <td className="num px-2.5 py-1.5 text-right">{p.n == null ? "—" : int(p.n)}</td>
+                <td className={`num px-2.5 py-1.5 text-right ${tone(p.net ?? null)}`}>{p.n === 0 ? "0.0%" : pct(p.net ?? null, 1)}</td>
+                <td className="num px-2.5 py-1.5 text-right">{num(p.win ?? null, 1)}</td>
+                <td className="num px-2.5 py-1.5 text-right">{num(p.pf ?? null)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {months.length > 0 ? (
+        <div className="mt-3">
+          <div className="grid grid-cols-6 items-end gap-1.5" style={{ height: 110 }} aria-label="Net % by month">
+            {months.map((m) => {
+              const v = m.net ?? 0, h = Math.max(2, (Math.abs(v) / max) * 46);
+              return (
+                <div key={m.m} className="flex h-full flex-col items-center justify-center" title={`${monthLabel(m.m)}: ${pct(v, 1)} · ${m.n} trades${m.win != null ? ` · ${num(m.win, 0)}% wins` : ""}`}>
+                  <div className="flex h-1/2 w-full items-end justify-center">
+                    {v > 0 && <div className="w-full max-w-7 rounded-t bg-gain/80" style={{ height: h }} />}
+                  </div>
+                  <div className="h-px w-full bg-line" />
+                  <div className="flex h-1/2 w-full items-start justify-center">
+                    {v < 0 && <div className="w-full max-w-7 rounded-b bg-loss/80" style={{ height: h }} />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-1 grid grid-cols-6 gap-1.5 text-center">
+            {months.map((m, i) => (
+              <div key={m.m} className="flex flex-col">
+                <span className="text-[0.68rem] text-ink-faint">{monthLabel(m.m)}{i === months.length - 1 ? "*" : ""}</span>
+                <span className={`num text-xs ${tone(m.net ?? null)}`}>{m.n ? pct(m.net ?? 0, 1) : "—"}</span>
+                <span className="num text-[0.65rem] text-ink-faint">{int(m.n)} tr</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[0.7rem] text-ink-faint">Closed trades only, counted in the month they closed (a trade held for months lands entirely in its exit month). Sum of per-trade net %. *Month to date.</p>
+        </div>
+      ) : (
+        run.src === "ts" && <p className="mt-2 text-xs text-ink-faint">TrendSpider's own figures as of its run on {run.asof}; it reports no month-by-month breakdown.</p>
+      )}
+    </section>
   );
 }
 

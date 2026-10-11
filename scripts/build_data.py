@@ -25,7 +25,20 @@ SCREEN = Path(r"C:\Users\annev\workspace\pine_screen")
 DEPTHS = (1000, 2000, 3000, 4000)
 TS_TF = {"5m": "5m", "15m": "15m", "1H": "1H", "Daily": "Daily"}
 TABLE_COLS = ["id", "src", "sid", "tf", "score", "held", "repaint", "breadth", "net", "dd", "trades", "win", "pf", "avg",
-              "edge", "bh", "from"]
+              "edge", "bh", "from", "m1", "m3", "m6", "asof"]
+PERIOD_TF = {"5m": "5m", "15m": "15m", "1h": "1H", "daily": "Daily"}
+
+
+def load_periods():
+    """Recent performance from the trade lists (pine_screen/periods.py): (ticker, tf, strategy) -> stats."""
+    out = {}
+    for f in glob.glob(str(SCREEN / "periods" / "*" / "*.jsonl")):
+        for line in open(f, encoding="utf-8"):
+            try: x = json.loads(line)
+            except Exception: continue
+            if "error" not in x and "p1m" in x:
+                out[(x["ticker"], PERIOD_TF[x["tf"]], x["strategy"])] = x
+    return out
 
 
 def wilson_low(k, n, z=1.645):
@@ -85,6 +98,7 @@ def main():
     names = json.loads((SCREEN / "symbols.json").read_text(encoding="utf-8")) if (SCREEN / "symbols.json").exists() else {}
     curves = json.loads((SCREEN / "curves.json").read_text(encoding="utf-8")) if (SCREEN / "curves.json").exists() else {}
     prows, pstrat = pine_rows()
+    periods = load_periods()
     tsby, tscls = ts_rows()
 
     # breadth: per strategy x timeframe, share of tickers held up (min 30 trades), Wilson low
@@ -117,7 +131,11 @@ def main():
                  "practicality": practicality(r.get("trades"), r.get("trade_max_dd"))}
         score = None if rep == "repaints" else round(st.fmean(parts.values()))
         key = f"tv:{sid}:{tf}"
+        pr = periods.get((tk, tf, sid))
         per_symbol[tk].append({
+            "m1": pr["p1m"].get("net", 0.0) if pr else None, "m3": pr["p3m"].get("net", 0.0) if pr else None,
+            "m6": pr["p6m"].get("net", 0.0) if pr else None, "asof": pr["end"] if pr else None,
+            "recent": {k: pr[k] for k in ("p1m", "p3m", "p6m", "months")} if pr else None,
             "id": key, "src": "tv", "sid": sid, "tf": tf, "score": score,
             "parts": {k: round(v) for k, v in parts.items()}, "held": pine_held(r), "repaint": rep,
             "breadth": [b[1], b[2]],
@@ -157,7 +175,12 @@ def main():
         parts = {"consistency": cons, "breadth": b[0], "edge": edge_part(pf, beat),
                  "practicality": practicality(deep.get("trade_count"), deep.get("max_drawdown"))}
         key = f"ts:{sid}:{tf}"
+        rec_d = d[max(dp for dp, x in d.items())]
         per_symbol[tk].append({
+            # TrendSpider's own figures, as of the day that batch ran (not today)
+            "m1": rnd(rec_d.get("net_perf_1mo")), "m3": rnd(rec_d.get("net_perf_3mo")), "m6": rnd(rec_d.get("net_perf_6mo")),
+            "asof": (rec_d.get("timestamp") or "")[:10] or None,
+            "recent": None,
             "id": key, "src": "ts", "sid": sid, "tf": tf, "score": round(st.fmean(parts.values())),
             "parts": {k: round(v) for k, v in parts.items()},
             "held": cons == 100 and beat and (deep.get("net_profit_pct") or 0) > 0, "repaint": None, "breadth": [b[1], b[2]],

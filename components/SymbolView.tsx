@@ -7,7 +7,7 @@ import { int, num, pct, scoreTone, tone } from "@/lib/format";
 import ReportPanel from "./ReportPanel";
 import SymbolAnalytics from "./SymbolAnalytics";
 
-type SortKey = "score" | "net" | "win" | "pf" | "trades" | "dd" | "edge" | "title" | "tf";
+type SortKey = "score" | "net" | "win" | "pf" | "trades" | "dd" | "edge" | "title" | "tf" | "m1" | "m3" | "m6";
 const PAGE = 50;
 
 export default function SymbolView({ symbol }: { symbol: string }) {
@@ -57,9 +57,9 @@ export default function SymbolView({ symbol }: { symbol: string }) {
     else { setSort(k); setDir(k === "title" || k === "tf" ? 1 : -1); }
   }
   function downloadCsv() {
-    const head = ["strategy", "source", "timeframe", "score", "held_up", "repaint", "net_pct", "max_dd", "trades", "win_rate", "profit_factor", "avg_trade_pct", "beat_buy_hold", "from"];
+    const head = ["strategy", "source", "timeframe", "score", "held_up", "repaint", "net_pct", "max_dd", "trades", "win_rate", "profit_factor", "avg_trade_pct", "beat_buy_hold", "from", "net_1m", "net_3m", "net_6m", "recent_as_of"];
     const esc = (v: any) => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
-    const body = rows.map((r) => [title(r), SOURCE_LABEL[r.src], r.tf, r.score, r.held, r.repaint, r.net, r.dd, r.trades, r.win, r.pf, r.avg, r.edge, r.from].map(esc).join(","));
+    const body = rows.map((r) => [title(r), SOURCE_LABEL[r.src], r.tf, r.score, r.held, r.repaint, r.net, r.dd, r.trades, r.win, r.pf, r.avg, r.edge, r.from, r.m1, r.m3, r.m6, r.asof].map(esc).join(","));
     const url = URL.createObjectURL(new Blob([[head.join(","), ...body].join("\n")], { type: "text/csv" }));
     const a = document.createElement("a"); a.href = url; a.download = `${symbol}_backtests.csv`; a.click(); URL.revokeObjectURL(url);
   }
@@ -141,11 +141,14 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                     <Th k="trades" label="Trades" sort={sort} dir={dir} on={sortBy} right />
                     <Th k="dd" label="Max DD" sort={sort} dir={dir} on={sortBy} right />
                     <Th k="edge" label="vs Hold" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="m1" label="1M" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="m3" label="3M" sort={sort} dir={dir} on={sortBy} right />
+                    <Th k="m6" label="6M" sort={sort} dir={dir} on={sortBy} right />
                   </tr>
                 </thead>
                 <tbody>
                   {!data && Array.from({ length: 10 }).map((_, i) => (
-                    <tr key={i}><td colSpan={9} className="px-3 py-2"><div className="h-5 animate-pulse rounded bg-panel-2" /></td></tr>
+                    <tr key={i}><td colSpan={12} className="px-3 py-2"><div className="h-5 animate-pulse rounded bg-panel-2" /></td></tr>
                   ))}
                   {shown.map((r) => (
                     <tr key={r.id} onClick={() => setSelected(r)}
@@ -168,10 +171,14 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                       <td className="num px-3 py-2 text-right">{int(r.trades)}</td>
                       <td className="num px-3 py-2 text-right text-loss">{r.dd == null ? "—" : num(-Math.abs(r.dd), 1)}</td>
                       <td className={`num px-3 py-2 text-right ${tone(r.edge)}`}>{r.edge == null ? "—" : pct(r.edge, r.src === "ts" ? 1 : 2)}</td>
+                      {(["m1", "m3", "m6"] as const).map((k) => (
+                        <td key={k} className={`num px-3 py-2 text-right ${tone(r[k])}`}
+                          title={r.asof ? `Net % of trades closed in the ${k[1]} month(s) to ${r.asof}` : "Not computed yet"}>{pct(r[k], 1)}</td>
+                      ))}
                     </tr>
                   ))}
                   {data && shown.length === 0 && (
-                    <tr><td colSpan={9} className="px-3 py-10 text-center text-ink-dim">No backtests match these filters.</td></tr>
+                    <tr><td colSpan={12} className="px-3 py-10 text-center text-ink-dim">No backtests match these filters.</td></tr>
                   )}
                 </tbody>
               </table>
