@@ -17,7 +17,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [details, setDetails] = useState<Map<string, RunDetail> | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
-  const [tf, setTf] = useState("");
+  const [tf, setTf] = useStored<string>("atlas.tf", "");          // kept when you switch stock
   const [src, setSrc] = useStored<"" | "tv" | "ts">("atlas.source", "");
   const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
   const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
@@ -26,8 +26,8 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [filters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
   const [visible, setVisible] = useStored<string[]>("atlas.columns", DEFAULT_COLUMNS);
   const [pageSize, setPageSize] = useStored<number>("atlas.pagesize", 30);
-  const [sort, setSort] = useState("score");
-  const [dir, setDir] = useState<1 | -1>(-1);
+  const [sort, setSort] = useStored<string>("atlas.sort", "score");
+  const [dir, setDir] = useStored<1 | -1>("atlas.dir", -1);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Run | null>(null);
 
@@ -63,7 +63,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   }, [data, tf, src, heldOnly, showRepaint, q, sort, dir, strategies, filters]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function sortBy(k: string) {
-    if (sort === k) setDir((d) => (d === 1 ? -1 : 1));
+    if (sort === k) setDir(dir === 1 ? -1 : 1);
     else { setSort(k); setDir(COLUMN[k]?.kind === "text" ? 1 : -1); }
   }
   function downloadCsv() {
