@@ -24,6 +24,12 @@ export function tagsOf(r: Run): Tag[] {
   if (r.repaint === "repaints") t.push({ label: "Repaints", tone: "loss", hint: "Trades changed when re-run with closed bars only: the backtest used future data" });
   else if (r.repaint === "vectors_present") t.push({ label: "Live differs", tone: "warn", hint: "History matched with closed bars, but parts of the script behave differently on the live bar" });
   else if (r.repaint === "clean") t.push({ label: "No repaint", tone: "muted", hint: "Passed Foresight's replay check" });
+  if (r.fills === "survives") t.push({ label: "Survives fills", tone: "gain", hint: "Still profitable overall and over the last 6 months with realistic fills (exits from the next bar, stop before target, close-based trailing, spread)" });
+  else if (r.fills === "fails") t.push({ label: "Fails fills", tone: "loss", hint: "Loses money (overall or over the last 6 months) once fills are realistic: the TradingView-fill result was a fill artefact" });
+  else t.push({ label: "Not fill-checked", tone: "muted", hint: r.src === "ts" ? "TrendSpider results come from its own tester and have not been re-run with realistic fills" : "Realistic-fill re-run not done yet" });
+  if (r.luck === "unlikely") t.push({ label: "Unlikely luck", tone: "gain", hint: `Edge this size is unlikely to be chance even though ${r.tested ?? "many"} strategies were tried on this stock and timeframe` });
+  else if (r.luck === "likely") t.push({ label: "Could be luck", tone: "warn", hint: `With ${r.tested ?? "many"} strategies tried on this stock and timeframe, a result this size could come from chance alone` });
+  else if (r.luck === "possible") t.push({ label: "Possibly luck", tone: "muted", hint: "Some chance this result comes from luck, given how many strategies were tried" });
   if ((r.win ?? 0) >= 85 || (r.pf ?? 0) >= 5)
     t.push({ label: "Check fills", tone: "warn", hint: "Win rate ≥ 85% or profit factor ≥ 5: often the tester's optimistic fills inside a bar, not a real edge" });
   if ((x.t1 ?? 0) > 0) t.push({ label: "Active", tone: "signal", hint: "Closed at least one trade in the last month" });
@@ -85,6 +91,8 @@ export const COLUMNS: Col[] = [
   { key: "sortino", label: "Sortino Ratio", kind: "number", get: (r) => n((r as any).sortino), render: (r) => num((r as any).sortino) },
   { key: "bars_held", label: "Avg Bars Per Trade", kind: "number", get: (r) => n((r as any).bars_held), render: (r) => num((r as any).bars_held, 1) },
   { key: "tpm", label: "Trades / Month", kind: "number", get: (r) => n((r as any).tpm), render: (r) => num((r as any).tpm, 1) },
+  { key: "acct", label: "Account Return % (script sizing)", kind: "number", get: (r) => n(r.acct), render: (r) => signed(r.acct ?? null),
+    hint: "Realistic fills, one account, the script's own position sizing: not comparable between scripts that size differently" },
   { key: "held", label: "Held Up", kind: "text", get: (r) => (r.held ? "yes" : "no"),
     render: (r) => (r.held ? <span className="text-gain">✓</span> : <span className="text-ink-faint">—</span>),
     hint: "Profitable per trade early and recently, and beat holding the stock" },

@@ -30,7 +30,11 @@ DEPTHS = (1000, 2000, 3000, 4000)
 TS_TF = {"5m": "5m", "15m": "15m", "1H": "1H", "Daily": "Daily"}
 TABLE_COLS = ["id", "src", "sid", "tf", "score", "held", "repaint", "breadth", "net", "dd", "trades", "win", "pf", "avg",
               "edge", "bh", "from", "m1", "m3", "m6", "asof", "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6",
-              "sharpe", "sortino", "bars_held", "tpm", "spark", "dir"]
+              "sharpe", "sortino", "bars_held", "tpm", "spark", "dir",
+              # realistic fills (Foresight strict broker model + price-scaled spread); None until re-run
+              "fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
+              "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3", "r_pf6",
+              "r_breadth", "acct", "acct_dd", "luck", "tested"]
 PERIOD_TF = {"5m": "5m", "15m": "15m", "1h": "1H", "daily": "Daily"}
 
 
@@ -44,6 +48,63 @@ def load_periods():
             if "error" not in x and "p1m" in x:
                 out[(x["ticker"], PERIOD_TF[x["tf"]], x["strategy"])] = x
     return out
+
+
+def load_strict():
+    """Realistic-fill re-runs (pine_screen/strict_runner.py): (ticker, tf, strategy) -> record."""
+    out = {}
+    for f in glob.glob(str(SCREEN / "strict" / "*" / "*.jsonl")):
+        for line in open(f, encoding="utf-8"):
+            try: x = json.loads(line)
+            except Exception: continue
+            if "error" not in x: out[(x["ticker"], PERIOD_TF[x["tf"]], x["strategy"])] = x
+    return out
+
+
+def drift_per_bar(x):
+    bh, bars = x.get("buyhold_return_pct"), x.get("bars")
+    if bh is None or not bars or bh <= -1: return None
+    return 100 * ((1 + bh) ** (1 / bars) - 1)
+
+
+def edge_over_drift(avg, hold_bars, x):
+    """Per-trade % beyond holding the stock for the same time and direction (same rule as the dashboard export)."""
+    d = drift_per_bar(x)
+    n = (x.get("t_long") or 0) + (x.get("t_short") or 0)
+    if avg is None or d is None or not hold_bars or not n: return None
+    return avg - d * hold_bars * ((x.get("t_long") or 0) - (x.get("t_short") or 0)) / n
+
+
+def strict_row(x):
+    """A realistic-fill record in the same shape as the TradingView export rows, so it is scored identically."""
+    if not x.get("t_n"): return None
+    r = {"trades": x.get("t_n"), "win_rate": x.get("t_win"), "avg_trade": x.get("t_avg"), "median_trade": x.get("t_med"),
+         "profit_factor": x.get("t_pf"), "net_profit_pct": x.get("t_net"),
+         "trade_max_dd": None if x.get("t_dd") is None else -x["t_dd"],
+         "is_trades": x.get("is_n"), "is_avg_trade": x.get("is_avg"), "is_profit_factor": x.get("is_pf"), "is_win_rate": x.get("is_win"),
+         "oos_trades": x.get("oos_n"), "oos_avg_trade": x.get("oos_avg"), "oos_profit_factor": x.get("oos_pf"), "oos_win_rate": x.get("oos_win"),
+         "edge_trade": edge_over_drift(x.get("t_avg"), x.get("t_bars"), x),
+         "is_edge_trade": edge_over_drift(x.get("is_avg"), x.get("is_bars"), x),
+         "oos_edge_trade": edge_over_drift(x.get("oos_avg"), x.get("oos_bars"), x),
+         "avgwin": x.get("t_avgwin"), "avgloss": x.get("t_avgloss"),
+         "acct": None if x.get("total_return_pct") is None else 100 * x["total_return_pct"],
+         "acct_dd": None if x.get("mdd") is None else 100 * x["mdd"]}
+    for d in DEPTHS:
+        r[f"d{d}_trades"] = x.get(f"d{d}_n"); r[f"d{d}_avg_trade"] = x.get(f"d{d}_avg")
+    return r
+
+
+def luck_label(n, avg, win, avgwin, avgloss, tested):
+    """How likely a per-trade edge this size is just luck, given how many strategies were tried on the same stock and
+    timeframe (Bonferroni). Per-trade spread estimated from win rate and average win / loss."""
+    if not n or n < 10 or avg is None or win is None or avgwin is None or avgloss is None: return None
+    w = win / 100
+    var = w * avgwin ** 2 + (1 - w) * avgloss ** 2 - avg ** 2
+    if var <= 0: return None
+    t = avg / math.sqrt(var / n)
+    p = 0.5 * math.erfc(t / math.sqrt(2))                     # one-sided
+    padj = min(1.0, p * max(tested, 1))
+    return "unlikely" if padj < 0.05 else "possible" if padj < 0.5 else "likely"
 
 
 def wilson_low(k, n, z=1.645):
@@ -150,12 +211,56 @@ def ts_rows():
     return by, cls
 
 
+def realistic(r, x, b, rep, tested):
+    """Score and headline figures under realistic fills, computed exactly like the TradingView-fill ones."""
+    empty = {k: None for k in ("fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
+                               "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3",
+                               "r_pf6", "r_breadth", "acct", "acct_dd", "luck", "r_parts", "r_recent", "r_windows", "r_fills_flag")}
+    empty["tested"] = tested
+    if not r: return empty
+    wins = [r.get("is_avg_trade"), r.get("oos_avg_trade")] + [r.get(f"d{d}_avg_trade") for d in DEPTHS
+                                                             if (r.get(f"d{d}_trades") or 0) >= 5]
+    wins = [w for w in wins if w is not None]
+    cons = 100 * sum(1 for w in wins if w > 0) / len(wins) if wins else 0
+    beat = (r.get("edge_trade") or 0) > 0
+    pr = x if x and "p1m" in x else None
+    parts = {"consistency": cons, "breadth": b[0],
+             "edge": edge_part(r.get("profit_factor"), beat) * confidence(r.get("trades")),
+             "practicality": practicality(r.get("trades"), r.get("trade_max_dd")), "recent": recent_part(pr)}
+    score, flagged = total_score(parts, r.get("win_rate"), r.get("profit_factor"))
+    if rep == "repaints": score = None
+    net, pf = r.get("net_profit_pct"), r.get("profit_factor")
+    six = pr["p6m"] if pr else {}
+    survives = (pf or 0) > 1 and (net or 0) > 0 and (not six.get("n") or (six.get("net") or 0) > 0)
+    out = dict(empty)
+    out.update({
+        "fills": "survives" if survives else "fails", "r_score": score, "r_held": pine_held(r),
+        "r_net": rnd(net), "r_dd": rnd(r.get("trade_max_dd")), "r_trades": r.get("trades"), "r_win": rnd(r.get("win_rate"), 1),
+        "r_pf": rnd(pf), "r_avg": rnd(r.get("avg_trade"), 3), "r_edge": rnd(r.get("edge_trade"), 3),
+        "r_breadth": [b[1], b[2]], "acct": rnd(r.get("acct"), 1), "acct_dd": rnd(r.get("acct_dd"), 1),
+        "luck": luck_label(r.get("trades"), r.get("avg_trade"), r.get("win_rate"), r.get("avgwin"), r.get("avgloss"), tested),
+        "r_parts": {k: (None if v is None else round(v)) for k, v in parts.items()}, "r_fills_flag": flagged,
+        "r_recent": {k: pr[k] for k in ("p1m", "p3m", "p6m", "months")} if pr else None,
+        "r_windows": {"first70": compact({"n": r.get("is_trades"), "avg": rnd(r.get("is_avg_trade"), 3), "pf": rnd(r.get("is_profit_factor"))}),
+                      "last30": compact({"n": r.get("oos_trades"), "avg": rnd(r.get("oos_avg_trade"), 3), "pf": rnd(r.get("oos_profit_factor"))})},
+    })
+    if pr:
+        for k in (1, 3, 6):
+            p = pr[f"p{k}m"]
+            out[f"r_m{k}"] = p.get("net", 0.0); out[f"r_t{k}"] = p.get("n"); out[f"r_w{k}"] = p.get("win"); out[f"r_pf{k}"] = p.get("pf")
+    return out
+
+
 def main():
     t0 = time.time()
     names = json.loads((SCREEN / "symbols.json").read_text(encoding="utf-8")) if (SCREEN / "symbols.json").exists() else {}
     curves = json.loads((SCREEN / "curves.json").read_text(encoding="utf-8")) if (SCREEN / "curves.json").exists() else {}
     prows, pstrat = pine_rows()
     periods = load_periods()
+    strict = load_strict()
+    srows = {k: strict_row(v) for k, v in strict.items()}
+    srows = {k: v for k, v in srows.items() if v}
+    tested = collections.Counter((r["ticker"], r["timeframe"]) for r in prows)
     tsby, tscls = ts_rows()
 
     # breadth: per strategy x timeframe, share of tickers held up (min 30 trades), Wilson low
@@ -169,6 +274,8 @@ def main():
         if (deep.get("trade_count") or 0) >= 10:
             groups[("ts", name, tf)].append((deep.get("net_profit_pct") or 0) > (deep.get("asset_perf") or 0)
                                             and (deep.get("net_profit_pct") or 0) > 0)
+    for (tk, tf, sid), r in srows.items():
+        if (r["trades"] or 0) >= 30: groups[("rf", sid, tf)].append(pine_held(r))
     breadth = {k: (100 * wilson_low(sum(v), len(v)), sum(v), len(v)) for k, v in groups.items()}
 
     per_symbol = collections.defaultdict(list)
@@ -191,7 +298,10 @@ def main():
                  "practicality": practicality(r.get("trades"), r.get("trade_max_dd")), "recent": recent_part(pr)}
         score, flagged = total_score(parts, r.get("win_rate"), r.get("profit_factor"))
         if rep == "repaints": score = None
+        rf = realistic(srows.get((tk, tf, sid)), strict.get((tk, tf, sid)), breadth.get(("rf", sid, tf), (0, 0, 0)),
+                       rep, tested[(tk, tf)])
         per_symbol[tk].append({
+            **rf,
             "m1": pr["p1m"].get("net", 0.0) if pr else None, "m3": pr["p3m"].get("net", 0.0) if pr else None,
             "m6": pr["p6m"].get("net", 0.0) if pr else None, "asof": pr["end"] if pr else None,
             "recent": {k: pr[k] for k in ("p1m", "p3m", "p6m", "months")} if pr else None,
@@ -249,6 +359,10 @@ def main():
             "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
             "pf1": None, "pf3": None, "pf6": None, "spark": None,
             "dir": {"LONG": "long", "SHORT": "short"}.get((deep.get("direction") or "").upper(), "both" if deep.get("direction") else None),
+            **{k: None for k in ("fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
+                                 "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3",
+                                 "r_pf6", "r_breadth", "acct", "acct_dd", "luck", "tested", "r_parts", "r_recent",
+                                 "r_windows", "r_fills_flag")},
             "id": key, "src": "ts", "sid": sid, "tf": tf, "score": ts_score,
             "parts": {k: (None if v is None else round(v)) for k, v in parts.items()}, "fills_flag": flagged,
             "held": cons == 100 and beat and (deep.get("net_profit_pct") or 0) > 0, "repaint": None, "breadth": [b[1], b[2]],
@@ -274,8 +388,10 @@ def main():
     (OUT / "symbol").mkdir(parents=True, exist_ok=True)
     index = []
     for tk, runs in sorted(per_symbol.items()):
-        runs.sort(key=lambda x: (x["score"] is None, -(x["score"] or 0)))
-        scored = [x for x in runs if x["score"] is not None]
+        # rank on realistic fills where the re-run exists, TradingView fills otherwise
+        eff = lambda x: x["r_score"] if x.get("fills") else x["score"]
+        runs.sort(key=lambda x: (eff(x) is None, -(eff(x) or 0)))
+        scored = [x for x in runs if eff(x) is not None]
         last = None
         csv = SCREEN / "data" / "daily" / f"{tk}.csv"
         if csv.exists():
@@ -286,7 +402,9 @@ def main():
         stats = {"backtests": len(runs), "strategies": len({x["sid"] for x in runs}),
                  "tv": sum(1 for x in runs if x["src"] == "tv"), "ts": sum(1 for x in runs if x["src"] == "ts"),
                  "held": sum(1 for x in scored if x["held"]),                       # backtests (strategy x timeframe)
-                 "held_strategies": len({x["sid"] for x in scored if x["held"]}),     # distinct strategies
+                 "held_strategies": len({x["sid"] for x in scored if (x["r_held"] if x.get("fills") else x["held"])}),
+                 "fill_checked": sum(1 for x in runs if x.get("fills")),
+                 "survives_fills": sum(1 for x in runs if x.get("fills") == "survives"),
                  "beat_bh_pct": round(100 * sum(1 for x in scored if (x["edge"] or 0) > 0) / len(scored), 1) if scored else None,
                  "median_net": rnd(st.median(nets)) if nets else None,
                  "avg_win": rnd(st.fmean([x["win"] for x in scored if x["win"] is not None]), 1) if scored else None,
@@ -307,7 +425,9 @@ def main():
             {"cols": dcols, "runs": [[x.get(c) for c in dcols] for x in runs]}, separators=(",", ":")), encoding="utf-8")
         index.append({"symbol": tk, "name": doc["name"], "exchange": doc["exchange"], "type": doc["type"], "last": last,
                       "lists": doc["lists"], "strategies": stats["strategies"], "backtests": stats["backtests"],
-                      "held": stats["held_strategies"], "best": {"sid": best["sid"], "tf": best["tf"], "score": best["score"], "src": best["src"]} if best else None})
+                      "held": stats["held_strategies"], "best": {"sid": best["sid"], "tf": best["tf"], "score": eff(best), "src": best["src"],
+                               "realistic": bool(best.get("fills"))} if best else None,
+                      "survives": stats["survives_fills"], "checked": stats["fill_checked"]})
     (OUT / "symbols.json").write_text(json.dumps({"generated": time.strftime("%Y-%m-%d %H:%M"), "lists": list(lists),
                                                  "symbols": index}, separators=(",", ":")), encoding="utf-8")
     (OUT / "strategies.json").write_text(json.dumps(strategies, separators=(",", ":")), encoding="utf-8")

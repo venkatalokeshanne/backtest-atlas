@@ -19,13 +19,34 @@ export type Run = {
   avg: number | null; edge: number | null; bh: number | null; from: string | null;
   /** net % over the trailing 1 / 3 / 6 months, counted back from `asof` (TradingView: last bar; TrendSpider: its run date) */
   m1: number | null; m3: number | null; m6: number | null; asof: string | null;
+  /** Realistic fills (Foresight strict model + spread): "survives" | "fails"; null = not fill-checked */
+  fills?: "survives" | "fails" | null;
+  r_score?: number | null; r_held?: boolean | null; r_net?: number | null; r_dd?: number | null; r_trades?: number | null;
+  r_win?: number | null; r_pf?: number | null; r_avg?: number | null; r_edge?: number | null;
+  r_m1?: number | null; r_m3?: number | null; r_m6?: number | null; r_t1?: number | null; r_t3?: number | null; r_t6?: number | null;
+  r_w1?: number | null; r_w3?: number | null; r_w6?: number | null; r_pf1?: number | null; r_pf3?: number | null; r_pf6?: number | null;
+  r_breadth?: [number, number] | null; acct?: number | null; acct_dd?: number | null;
+  luck?: "unlikely" | "possible" | "likely" | null; tested?: number | null;
+  /** set by view(): which numbers this row is showing */
+  mode?: "realistic" | "tv";
 };
+export type Fills = "realistic" | "tv";
+const SWAP = ["score", "held", "net", "dd", "trades", "win", "pf", "avg", "edge", "m1", "m3", "m6",
+  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth"] as const;
+/** The row as shown: realistic-fill numbers when chosen and available, TradingView-fill numbers otherwise. */
+export function view(r: Run, fills: Fills): Run {
+  if (fills === "tv" || !r.fills) return { ...r, mode: "tv" };
+  const o: any = { ...r, mode: "realistic" };
+  for (const k of SWAP) o[k] = (r as any)[`r_${k}`];
+  return o as Run;
+}
 export type PeriodStat = { n: number; net?: number; win?: number; pf?: number | null };
 export type Window = { n?: number; avg?: number; pf?: number; win?: number; net?: number; dd?: number; edge?: number; bh?: number; from?: string };
 export type RunDetail = {
   id: string; parts: Record<"consistency" | "breadth" | "edge" | "practicality" | "recent", number | null>;
   /** win rate >= 85% or PF >= 5: score multiplied by 0.6 until verified */
   fills_flag?: boolean;
+  r_parts?: RunDetail["parts"] | null; r_recent?: RunDetail["recent"]; r_windows?: Record<string, Window> | null; r_fills_flag?: boolean | null;
   med: number | null; longs: number | null; shorts: number | null; bars_held: number | null;
   sharpe: number | null; sortino: number | null; tpm: number | null; to: string | null; bars: number | null;
   windows: Record<string, Window>;

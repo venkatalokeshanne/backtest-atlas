@@ -21,14 +21,19 @@ const VERDICT: Record<string, [string, string, string]> = {
   clean: ["Clean", "text-gain", "No repainting found in the replay check."],
 };
 
-export default function ReportPanel({ run, detail, loading, strategy, symbol, name, onClose }: {
-  run: Run | null; detail: RunDetail | null; loading: boolean; strategy?: Strategy; symbol: string; name: string; onClose: () => void;
+export default function ReportPanel({ run, raw, detail: rawDetail, loading, strategy, symbol, name, onClose }: {
+  run: Run | null; raw?: Run | null; detail: RunDetail | null; loading: boolean; strategy?: Strategy; symbol: string; name: string; onClose: () => void;
 }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   }, [onClose]);
 
+  const real = run?.mode === "realistic";
+  const detail: RunDetail | null = rawDetail && real
+    ? { ...rawDetail, parts: rawDetail.r_parts ?? rawDetail.parts, recent: rawDetail.r_recent ?? null,
+        fills_flag: !!rawDetail.r_fills_flag }
+    : rawDetail;
   if (!run) {
     return (
       <aside className="hidden h-fit flex-col items-center gap-2 rounded-xl border border-dashed border-line p-10 text-center xl:flex">
@@ -64,7 +69,9 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
       </div>
 
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Growth vs buy &amp; hold</h3>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+          Growth vs buy &amp; hold {real && <span className="normal-case tracking-normal">· drawn with TradingView fills</span>}
+        </h3>
         {loading ? <div className="h-48 animate-pulse rounded-lg bg-panel-2" />
           : detail?.curve ? <Curve c={detail.curve} />
           : <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-faint">
@@ -73,8 +80,12 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
             </p>}
       </section>
 
+      <FillsCompare raw={raw ?? run} />
+
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Backtest score</h3>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+          Backtest score <span className="normal-case tracking-normal">· {real ? "realistic fills" : "TradingView fills"}</span>
+        </h3>
         {detail ? (
           <div className="flex flex-col gap-2">
             {PARTS.map((p) => {
@@ -169,7 +180,8 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
           </a>
         )}
         <p className="text-xs leading-relaxed text-ink-faint">
-          Per-trade returns include commission; no spread or slippage is charged, so live results will be worse. {name} is shown
+          Per-trade returns include the script's commission. Your watchlists were picked today, mostly stocks that rose,
+          which flatters long-only strategies. {name} is shown
           for research only — a backtest is not a prediction and this is not advice.
         </p>
       </section>
@@ -183,6 +195,81 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
         <div className="max-h-[88vh] w-full overflow-y-auto rounded-t-2xl border-t border-line bg-panel p-4" onClick={(e) => e.stopPropagation()}>{body}</div>
       </div>
     </>
+  );
+}
+
+/** Same backtest under TradingView's fills and realistic fills, side by side, plus the luck check. */
+function FillsCompare({ raw }: { raw: Run }) {
+  if (raw.src === "ts") {
+    return (
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Realistic fills</h3>
+        <p className="rounded-lg border border-dashed border-line p-3 text-sm text-ink-faint">
+          Not fill-checked: TrendSpider results come from its own tester and could not be re-run with realistic fills.
+        </p>
+      </section>
+    );
+  }
+  if (!raw.fills) {
+    return (
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Realistic fills</h3>
+        <p className="rounded-lg border border-dashed border-line p-3 text-sm text-ink-faint">Realistic-fill re-run not done yet for this backtest.</p>
+      </section>
+    );
+  }
+  const rows: [string, string, string][] = [
+    ["Backtest score", String(raw.score ?? "—"), String(raw.r_score ?? "—")],
+    ["Net %", pct(raw.net, 1), pct(raw.r_net ?? null, 1)],
+    ["Profit factor", num(raw.pf), num(raw.r_pf ?? null)],
+    ["Win rate %", num(raw.win, 1), num(raw.r_win ?? null, 1)],
+    ["Trades", int(raw.trades), int(raw.r_trades ?? null)],
+    ["Max drawdown", raw.dd == null ? "—" : num(Math.abs(raw.dd), 1), raw.r_dd == null ? "—" : num(Math.abs(raw.r_dd), 1)],
+    ["Last 6 months", pct(raw.m6, 1), pct(raw.r_m6 ?? null, 1)],
+  ];
+  const luck: Record<string, [string, string]> = {
+    unlikely: ["text-gain", "Unlikely to be luck"], possible: ["text-ink-dim", "Possibly luck"], likely: ["text-warn", "Could be luck"],
+  };
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">TradingView vs realistic fills</h3>
+      <div className="overflow-x-auto rounded-lg border border-line">
+        <table className="w-full text-sm">
+          <thead className="bg-panel text-[0.68rem] uppercase tracking-wider text-ink-faint">
+            <tr><th className="px-2.5 py-2 text-left"></th><th className="px-2.5 py-2 text-right">TradingView</th>
+              <th className="px-2.5 py-2 text-right">Realistic</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(([k, a, b]) => (
+              <tr key={k} className="border-t border-line-soft">
+                <td className="px-2.5 py-1.5 text-ink-dim">{k}</td>
+                <td className="num px-2.5 py-1.5 text-right text-ink-dim">{a}</td>
+                <td className="num px-2.5 py-1.5 text-right">{b}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className={`mt-2 text-sm ${raw.fills === "survives" ? "text-gain" : "text-loss"}`}>
+        {raw.fills === "survives" ? "Survives realistic fills." : "Fails realistic fills: the TradingView-fill result does not hold."}
+      </p>
+      {raw.luck && (
+        <p className={`text-sm ${luck[raw.luck][0]}`} title="Per-trade edge tested against chance, allowing for how many strategies were tried on this stock and timeframe">
+          {luck[raw.luck][1]} <span className="text-ink-faint">({raw.tested ?? "many"} strategies tried on this stock and timeframe)</span>
+        </p>
+      )}
+      {raw.acct != null && (
+        <p className="mt-1 text-xs text-ink-faint">
+          Account return with realistic fills and the script's own position sizing: <span className="num text-ink-dim">{pct(raw.acct, 1)}</span>
+          {raw.acct_dd != null && <> (max drawdown <span className="num">{num(raw.acct_dd, 1)}%</span>)</>}. Depends on how the
+          author sized trades, so it is not comparable between scripts.
+        </p>
+      )}
+      <p className="mt-1 text-xs text-ink-faint">
+        Realistic fills: exits from the next bar, the stop wins when a bar touches stop and target, trailing stops on closes,
+        and a spread of 1–3 cents by share price. Still no commission beyond the script's own.
+      </p>
+    </section>
   );
 }
 

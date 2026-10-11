@@ -49,7 +49,11 @@ export default function SymbolExplorer() {
         <p className="max-w-3xl text-ink-dim">
           TradingView strategies run as published by Foresight, and the TrendSpider strategy runs, on each of your watchlist
           stocks across 5-minute, 15-minute, hourly and daily bars. Pick a stock to see which strategies held up on it —
-          and which only looked good once.
+          and which only looked good once. Rankings use realistic fills where a backtest has been re-run with them.
+        </p>
+        <p className="max-w-3xl text-xs text-ink-faint">
+          These watchlists were picked today and mostly hold stocks that rose, which flatters long-only strategies; and with
+          ~1,000 strategies tried per stock, some results are luck — each report says how likely.
         </p>
       </section>
 

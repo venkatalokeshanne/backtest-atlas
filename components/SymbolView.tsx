@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
+import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, view, type Fills, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
 import { int, num, pct, tone } from "@/lib/format";
 import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TagChips, TF_ORDER, type Filter } from "@/lib/columns";
 import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
@@ -18,6 +18,9 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
   const [tf, setTf] = useStored<string>("atlas.tf", "");          // kept when you switch stock
+  // which fills the numbers use: realistic (Foresight strict re-run) by default, TradingView's on request
+  const [fills, setFills] = useStored<Fills>("atlas.fills", "realistic");
+  const [onlyChecked, setOnlyChecked] = useStored<boolean>("atlas.onlyChecked", false);
   const [src, setSrc] = useStored<"" | "tv" | "ts">("atlas.source", "");
   const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
   const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
@@ -29,23 +32,29 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [sort, setSort] = useStored<string>("atlas.sort", "score");
   const [dir, setDir] = useStored<1 | -1>("atlas.dir", -1);
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<Run | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    setData(null); setDetails(null); setSelected(null);
+    setData(null); setDetails(null); setSelectedId(null);
     loadSymbol(symbol).then(setData).catch((e) => setError(String(e)));
     loadStrategies().then(setStrategies);
   }, [symbol]);
   // the report data is larger: fetch it once a row is opened
-  useEffect(() => { if (selected && !details) loadDetails(symbol).then(setDetails); }, [selected, details, symbol]);
-  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, q, sort, dir, filters, pageSize]);
+  useEffect(() => { if (selectedId && !details) loadDetails(symbol).then(setDetails); }, [selectedId, details, symbol]);
+  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, q, sort, dir, filters, pageSize, fills, onlyChecked]);
 
   const title = (r: Run) => strategies[r.sid]?.title ?? r.sid;
   const cols = useMemo(() => COLUMNS.filter((c) => c.fixed || visible.includes(c.key)), [visible]);
+  // every number below (table, filters, analytics, report) uses the chosen fills
+  const viewed = useMemo(() => (data ? data.runs.map((r) => view(r, fills)) : []), [data, fills]);
+  const raw = useMemo(() => new Map((data?.runs ?? []).map((r) => [r.id, r])), [data]);
+  const selected = selectedId ? viewed.find((r) => r.id === selectedId) ?? null : null;
+  const setSelected = (r: Run | null) => setSelectedId(r ? r.id : null);
   const rows = useMemo(() => {
     if (!data) return [];
     const s = q.trim().toLowerCase();
-    const out = data.runs.filter((r) =>
+    const out = viewed.filter((r) =>
+      (!onlyChecked || !!r.fills) &&
       (!tf || r.tf === tf) && (!src || r.src === src) && (!heldOnly || r.held) &&
       (showRepaint || r.repaint !== "repaints") && !strategies[r.sid]?.dup_of &&
       (!s || title(r).toLowerCase().includes(s)) && matches(r, strategies, filters));
@@ -56,11 +65,13 @@ export default function SymbolView({ symbol }: { symbol: string }) {
       return typeof v === "string" ? v.toLowerCase() : v;
     };
     return out.sort((a, b) => {
+      // realistic mode: fill-checked backtests first, so optimistic unchecked numbers never outrank checked ones
+      if (fills === "realistic" && !!a.fills !== !!b.fills) return a.fills ? -1 : 1;
       const av = val(a), bv = val(b);
       if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
       return av < bv ? -dir : av > bv ? dir : 0;
     });
-  }, [data, tf, src, heldOnly, showRepaint, q, sort, dir, strategies, filters]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, viewed, tf, src, heldOnly, showRepaint, q, sort, dir, strategies, filters, onlyChecked, fills]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function sortBy(k: string) {
     if (sort === k) setDir(dir === 1 ? -1 : 1);
@@ -113,21 +124,33 @@ export default function SymbolView({ symbol }: { symbol: string }) {
         ))}
       </div>
 
-      {tab === "analytics" && data && <SymbolAnalytics data={data} strategies={strategies} onOpen={(r) => { setTab("strategies"); setSelected(r); }} />}
+      {tab === "analytics" && data && <SymbolAnalytics data={{ ...data, runs: viewed }} strategies={strategies} onOpen={(r) => { setTab("strategies"); setSelected(r); }} />}
 
       {tab === "strategies" && (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <section className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-2.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-ink-faint">Fills</span>
+                <Pills value={fills} onChange={(v) => setFills(v as Fills)}
+                  options={[["realistic", "Realistic"], ["tv", "TradingView"]]} />
+              </div>
               <Pills value={tf} onChange={setTf} options={[["", "All TF"], ...TIMEFRAMES.map((t) => [t, t] as [string, string])]} />
               <FiltersButton filters={filters} onChange={setFilters} heldOnly={heldOnly} onHeldOnly={setHeldOnly}
-                showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")} />
+                showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")}
+                onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
               <button onClick={downloadCsv} className="rounded-md border border-line px-2.5 py-1 text-sm text-ink-dim hover:text-ink" title="Download these rows as CSV">CSV</button>
             </div>
 
+            {fills === "realistic" && data && rows.some((r) => !r.fills) && (
+              <p className="text-xs text-ink-faint">
+                Fill-checked backtests come first. {int(rows.filter((r) => !r.fills).length)} below them are not fill-checked
+                (TrendSpider, or not re-run yet) and still show TradingView-fill numbers.
+              </p>
+            )}
             <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-panel text-left text-[0.7rem] uppercase tracking-wider text-ink-faint">
@@ -184,7 +207,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
             )}
           </section>
 
-          <ReportPanel run={selected} detail={selected ? details?.get(selected.id) ?? null : null} loading={!!selected && !details}
+          <ReportPanel run={selected} raw={selected ? raw.get(selected.id) ?? null : null} detail={selected ? details?.get(selected.id) ?? null : null} loading={!!selected && !details}
             strategy={selected ? strategies[selected.sid] : undefined} symbol={symbol} name={data?.name ?? symbol}
             onClose={() => setSelected(null)} />
         </div>
