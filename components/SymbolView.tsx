@@ -19,8 +19,8 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
   const [tf, setTf] = useState("");
   const [src, setSrc] = useState<"" | "tv" | "ts">("");
-  const [heldOnly, setHeldOnly] = useState(false);
-  const [showRepaint, setShowRepaint] = useState(false);
+  const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
+  const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
   const [q, setQ] = useState("");
   // table settings, remembered in this browser
   const [filters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
@@ -121,15 +121,8 @@ export default function SymbolView({ symbol }: { symbol: string }) {
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-2.5">
               <Pills value={tf} onChange={setTf} options={[["", "All TF"], ...TIMEFRAMES.map((t) => [t, t] as [string, string])]} />
               <Pills value={src} onChange={(v) => setSrc(v as any)} options={[["", "All sources"], ["tv", "TradingView"], ["ts", "TrendSpider"]]} />
-              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
-                <input id="held-only" type="checkbox" checked={heldOnly} onChange={(e) => setHeldOnly(e.target.checked)} className="accent-[var(--color-signal)]" />
-                Held up only
-              </label>
-              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
-                <input id="show-repaint" type="checkbox" checked={showRepaint} onChange={(e) => setShowRepaint(e.target.checked)} className="accent-[var(--color-signal)]" />
-                Show repainting
-              </label>
-              <FiltersButton filters={filters} onChange={setFilters} />
+              <FiltersButton filters={filters} onChange={setFilters} heldOnly={heldOnly} onHeldOnly={setHeldOnly}
+                showRepaint={showRepaint} onShowRepaint={setShowRepaint} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />

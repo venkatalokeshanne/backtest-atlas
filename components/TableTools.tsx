@@ -32,12 +32,25 @@ function Popover({ label, badge, children }: { label: React.ReactNode; badge?: n
 
 const selectCls = "rounded-md border border-line bg-ground px-2 py-1.5 text-sm outline-none focus:border-signal/60";
 
-export function FiltersButton({ filters, onChange }: { filters: Filter[]; onChange: (f: Filter[]) => void }) {
-  const active = filters.filter((f) => f.value.trim() !== "").length;
+export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint }: {
+  filters: Filter[]; onChange: (f: Filter[]) => void;
+  heldOnly: boolean; onHeldOnly: (v: boolean) => void; showRepaint: boolean; onShowRepaint: (v: boolean) => void;
+}) {
+  const active = filters.filter((f) => f.value.trim() !== "").length + (heldOnly ? 1 : 0) + (showRepaint ? 1 : 0);
   const set = (i: number, patch: Partial<Filter>) => onChange(filters.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   return (
     <Popover badge={active} label={<><FunnelIcon /> Filters</>}>
       <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ink-faint">Filters</div>
+      <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1.5 border-b border-line-soft pb-3 text-sm text-ink-dim">
+        <label className="flex items-center gap-2" title="Profitable per trade early and recently, and beat holding the stock">
+          <input id="held-only" type="checkbox" checked={heldOnly} onChange={(e) => onHeldOnly(e.target.checked)} className="accent-[var(--color-signal)]" />
+          Held up only
+        </label>
+        <label className="flex items-center gap-2" title="Backtests whose trades changed when re-run with closed bars only (they used future data)">
+          <input id="show-repaint" type="checkbox" checked={showRepaint} onChange={(e) => onShowRepaint(e.target.checked)} className="accent-[var(--color-signal)]" />
+          Show repainting
+        </label>
+      </div>
       <div className="flex flex-col gap-2">
         {filters.map((f, i) => {
           const col = COLUMN[f.key];
@@ -68,7 +81,7 @@ export function FiltersButton({ filters, onChange }: { filters: Filter[]; onChan
       <div className="mt-3 flex items-center justify-between">
         <button onClick={() => onChange([...filters, { join: "and", key: "net", op: ">=", value: "" }])}
           className="text-sm text-signal hover:underline">+ Add filter</button>
-        <button onClick={() => onChange(DEFAULT_FILTERS)} className="text-xs text-ink-faint hover:text-ink">Reset</button>
+        <button onClick={() => { onChange(DEFAULT_FILTERS); onHeldOnly(false); onShowRepaint(false); }} className="text-xs text-ink-faint hover:text-ink">Reset</button>
       </div>
     </Popover>
   );
