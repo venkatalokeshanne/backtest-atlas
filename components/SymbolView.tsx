@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
-import { int, num, pct, scoreTone, tone } from "@/lib/format";
+import { int, num, pct, tone } from "@/lib/format";
+import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TF_ORDER, type Filter } from "@/lib/columns";
+import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
 import ReportPanel from "./ReportPanel";
 import SymbolAnalytics from "./SymbolAnalytics";
 
-type SortKey = "score" | "net" | "win" | "pf" | "trades" | "dd" | "edge" | "title" | "tf" | "m1" | "m3" | "m6";
-const PAGE = 50;
+const PAGE_SIZES = [20, 30, 50, 100];
 
 export default function SymbolView({ symbol }: { symbol: string }) {
   const [data, setData] = useState<SymbolData | null>(null);
@@ -20,9 +21,12 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [src, setSrc] = useState<"" | "tv" | "ts">("");
   const [heldOnly, setHeldOnly] = useState(false);
   const [showRepaint, setShowRepaint] = useState(false);
-  const [minTrades, setMinTrades] = useState(30);
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortKey>("score");
+  // table settings, remembered in this browser
+  const [filters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
+  const [visible, setVisible] = useStored<string[]>("atlas.columns", DEFAULT_COLUMNS);
+  const [pageSize, setPageSize] = useStored<number>("atlas.pagesize", 30);
+  const [sort, setSort] = useState("score");
   const [dir, setDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Run | null>(null);
@@ -34,39 +38,46 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   }, [symbol]);
   // the report data is larger: fetch it once a row is opened
   useEffect(() => { if (selected && !details) loadDetails(symbol).then(setDetails); }, [selected, details, symbol]);
-  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, minTrades, q, sort, dir]);
+  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, q, sort, dir, filters, pageSize]);
 
   const title = (r: Run) => strategies[r.sid]?.title ?? r.sid;
+  const cols = useMemo(() => COLUMNS.filter((c) => c.fixed || visible.includes(c.key)), [visible]);
   const rows = useMemo(() => {
     if (!data) return [];
     const s = q.trim().toLowerCase();
     const out = data.runs.filter((r) =>
       (!tf || r.tf === tf) && (!src || r.src === src) && (!heldOnly || r.held) &&
-      (showRepaint || r.repaint !== "repaints") && (r.trades ?? 0) >= minTrades &&
-      (!strategies[r.sid]?.dup_of) && (!s || title(r).toLowerCase().includes(s)));
-    const val = (r: Run): any => sort === "title" ? title(r).toLowerCase() : sort === "tf" ? TIMEFRAMES.indexOf(r.tf as any) : r[sort];
+      (showRepaint || r.repaint !== "repaints") && !strategies[r.sid]?.dup_of &&
+      (!s || title(r).toLowerCase().includes(s)) && matches(r, strategies, filters));
+    const col = COLUMN[sort];
+    const val = (r: Run): any => {
+      if (sort === "tf") return TF_ORDER.indexOf(r.tf);
+      const v = col?.get(r, strategies);
+      return typeof v === "string" ? v.toLowerCase() : v;
+    };
     return out.sort((a, b) => {
       const av = val(a), bv = val(b);
       if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
       return av < bv ? -dir : av > bv ? dir : 0;
     });
-  }, [data, tf, src, heldOnly, showRepaint, minTrades, q, sort, dir, strategies]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, tf, src, heldOnly, showRepaint, q, sort, dir, strategies, filters]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  function sortBy(k: SortKey) {
+  function sortBy(k: string) {
     if (sort === k) setDir((d) => (d === 1 ? -1 : 1));
-    else { setSort(k); setDir(k === "title" || k === "tf" ? 1 : -1); }
+    else { setSort(k); setDir(COLUMN[k]?.kind === "text" ? 1 : -1); }
   }
   function downloadCsv() {
-    const head = ["strategy", "source", "timeframe", "score", "held_up", "repaint", "net_pct", "max_dd", "trades", "win_rate", "profit_factor", "avg_trade_pct", "beat_buy_hold", "from", "net_1m", "net_3m", "net_6m", "recent_as_of"];
+    const exp = COLUMNS.filter((c) => c.key !== "spark");
     const esc = (v: any) => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
-    const body = rows.map((r) => [title(r), SOURCE_LABEL[r.src], r.tf, r.score, r.held, r.repaint, r.net, r.dd, r.trades, r.win, r.pf, r.avg, r.edge, r.from, r.m1, r.m3, r.m6, r.asof].map(esc).join(","));
-    const url = URL.createObjectURL(new Blob([[head.join(","), ...body].join("\n")], { type: "text/csv" }));
+    const body = rows.map((r) => [...exp.map((c) => c.get(r, strategies)), r.repaint, r.asof].map(esc).join(","));
+    const head = [...exp.map((c) => c.label), "Repaint check", "Recent figures as of"].map(esc).join(",");
+    const url = URL.createObjectURL(new Blob([[head, ...body].join("\n")], { type: "text/csv" }));
     const a = document.createElement("a"); a.href = url; a.download = `${symbol}_backtests.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
   if (error) return <p className="text-loss">Could not load {symbol}: {error}</p>;
-  const shown = rows.slice((page - 1) * PAGE, page * PAGE);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const shown = rows.slice((page - 1) * pageSize, page * pageSize);
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
 
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-5">
@@ -118,11 +129,8 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                 <input id="show-repaint" type="checkbox" checked={showRepaint} onChange={(e) => setShowRepaint(e.target.checked)} className="accent-[var(--color-signal)]" />
                 Show repainting
               </label>
-              <label className="flex items-center gap-1.5 text-sm text-ink-dim">
-                Min trades
-                <input id="min-trades" type="number" min={0} value={minTrades} onChange={(e) => setMinTrades(Number(e.target.value) || 0)}
-                  className="num w-16 rounded-md border border-line bg-ground px-2 py-1 text-base sm:text-sm outline-none" />
-              </label>
+              <FiltersButton filters={filters} onChange={setFilters} />
+              <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
               <button onClick={downloadCsv} className="rounded-md border border-line px-2.5 py-1 text-sm text-ink-dim hover:text-ink" title="Download these rows as CSV">CSV</button>
@@ -132,53 +140,37 @@ export default function SymbolView({ symbol }: { symbol: string }) {
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-panel text-left text-[0.7rem] uppercase tracking-wider text-ink-faint">
                   <tr>
-                    <Th k="title" label="Strategy" sort={sort} dir={dir} on={sortBy} />
-                    <Th k="tf" label="TF" sort={sort} dir={dir} on={sortBy} />
-                    <Th k="score" label="Score" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="net" label="Net %" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="win" label="Win %" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="pf" label="PF" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="trades" label="Trades" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="dd" label="Max DD" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="edge" label="vs Hold" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="m1" label="1M" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="m3" label="3M" sort={sort} dir={dir} on={sortBy} right />
-                    <Th k="m6" label="6M" sort={sort} dir={dir} on={sortBy} right />
+                    {cols.map((c) => (
+                      <Th key={c.key} k={c.key} label={c.key === "tf" ? "TF" : c.label} sort={sort} dir={dir} on={sortBy}
+                        right={c.kind === "number"} hint={c.hint} sortable={c.key !== "spark"} />
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {!data && Array.from({ length: 10 }).map((_, i) => (
-                    <tr key={i}><td colSpan={12} className="px-3 py-2"><div className="h-5 animate-pulse rounded bg-panel-2" /></td></tr>
+                    <tr key={i}><td colSpan={cols.length} className="px-3 py-2"><div className="h-5 animate-pulse rounded bg-panel-2" /></td></tr>
                   ))}
                   {shown.map((r) => (
                     <tr key={r.id} onClick={() => setSelected(r)}
                       className={`cursor-pointer border-t border-line-soft ${selected?.id === r.id ? "bg-signal-soft/60" : "hover:bg-panel"}`}>
-                      <td className="max-w-[22rem] px-3 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate">{title(r)}</span>
-                          {r.held && <span title="Held up: profitable per trade early and recently, beat holding" className="text-gain">✓</span>}
-                          {r.repaint === "repaints" && <span className="rounded bg-loss/15 px-1 text-[0.62rem] font-semibold text-loss">REPAINTS</span>}
-                        </div>
-                        <div className="text-[0.7rem] text-ink-faint">{SOURCE_LABEL[r.src]}</div>
-                      </td>
-                      <td className="px-3 py-2 text-ink-dim">{r.tf}</td>
-                      <td className="px-3 py-2 text-right">
-                        <span className={`num rounded px-1.5 py-0.5 text-xs font-semibold ${scoreTone(r.score)}`}>{r.score ?? "—"}</span>
-                      </td>
-                      <td className={`num px-3 py-2 text-right ${tone(r.net)}`}>{pct(r.net, 1)}</td>
-                      <td className="num px-3 py-2 text-right">{num(r.win, 1)}</td>
-                      <td className="num px-3 py-2 text-right">{num(r.pf)}</td>
-                      <td className="num px-3 py-2 text-right">{int(r.trades)}</td>
-                      <td className="num px-3 py-2 text-right text-loss">{r.dd == null ? "—" : num(-Math.abs(r.dd), 1)}</td>
-                      <td className={`num px-3 py-2 text-right ${tone(r.edge)}`}>{r.edge == null ? "—" : pct(r.edge, r.src === "ts" ? 1 : 2)}</td>
-                      {(["m1", "m3", "m6"] as const).map((k) => (
-                        <td key={k} className={`num px-3 py-2 text-right ${tone(r[k])}`}
-                          title={r.asof ? `Net % of trades closed in the ${k[1]} month(s) to ${r.asof}` : "Not computed yet"}>{pct(r[k], 1)}</td>
+                      {cols.map((c) => c.key === "strategy" ? (
+                        <td key={c.key} className="max-w-[22rem] px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate">{title(r)}</span>
+                            {r.held && <span title="Held up: profitable per trade early and recently, beat holding" className="text-gain">✓</span>}
+                            {r.repaint === "repaints" && <span className="rounded bg-loss/15 px-1 text-[0.62rem] font-semibold text-loss">REPAINTS</span>}
+                          </div>
+                          <div className="text-[0.7rem] text-ink-faint">{SOURCE_LABEL[r.src]}</div>
+                        </td>
+                      ) : (
+                        <td key={c.key} className={`whitespace-nowrap px-3 py-2 ${c.kind === "number" ? "num text-right" : "text-ink-dim"}`}>
+                          {c.render ? c.render(r, strategies) : String(c.get(r, strategies) ?? "—")}
+                        </td>
                       ))}
                     </tr>
                   ))}
                   {data && shown.length === 0 && (
-                    <tr><td colSpan={12} className="px-3 py-10 text-center text-ink-dim">No backtests match these filters.</td></tr>
+                    <tr><td colSpan={cols.length} className="px-3 py-10 text-center text-ink-dim">No backtests match these filters.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -187,6 +179,12 @@ export default function SymbolView({ symbol }: { symbol: string }) {
               <div className="flex items-center justify-between text-sm text-ink-dim">
                 <span>{int(rows.length)} backtests · duplicates hidden</span>
                 <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5">Rows
+                    <select id="page-size" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="rounded-md border border-line bg-panel px-1.5 py-1 text-sm outline-none">
+                      {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
                   <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-md border border-line px-2.5 py-1 disabled:opacity-40">←</button>
                   <span className="num">{page} / {pages}</span>
                   <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-md border border-line px-2.5 py-1 disabled:opacity-40">→</button>
@@ -215,13 +213,16 @@ function Pills({ value, onChange, options }: { value: string; onChange: (v: stri
   );
 }
 
-function Th({ k, label, sort, dir, on, right }: { k: SortKey; label: string; sort: SortKey; dir: 1 | -1; on: (k: SortKey) => void; right?: boolean }) {
+function Th({ k, label, sort, dir, on, right, hint, sortable = true }: { k: string; label: string; sort: string; dir: 1 | -1; on: (k: string) => void; right?: boolean; hint?: string; sortable?: boolean }) {
   const active = sort === k;
   return (
-    <th className={`whitespace-nowrap px-3 py-2.5 font-semibold ${right ? "text-right" : ""}`} aria-sort={active ? (dir === 1 ? "ascending" : "descending") : "none"}>
-      <button onClick={() => on(k)} className={`uppercase tracking-wider ${active ? "text-signal" : "hover:text-ink"}`}>
-        {label}{active ? (dir === 1 ? " ↑" : " ↓") : ""}
-      </button>
+    <th className={`whitespace-nowrap px-3 py-2.5 font-semibold ${right ? "text-right" : ""}`} title={hint}
+      aria-sort={active ? (dir === 1 ? "ascending" : "descending") : "none"}>
+      {sortable ? (
+        <button onClick={() => on(k)} className={`uppercase tracking-wider ${active ? "text-signal" : "hover:text-ink"}`}>
+          {label}{active ? (dir === 1 ? " ↑" : " ↓") : ""}
+        </button>
+      ) : <span className="uppercase tracking-wider">{label}</span>}
     </th>
   );
 }

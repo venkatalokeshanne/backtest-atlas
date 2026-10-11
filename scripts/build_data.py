@@ -25,7 +25,8 @@ SCREEN = Path(r"C:\Users\annev\workspace\pine_screen")
 DEPTHS = (1000, 2000, 3000, 4000)
 TS_TF = {"5m": "5m", "15m": "15m", "1H": "1H", "Daily": "Daily"}
 TABLE_COLS = ["id", "src", "sid", "tf", "score", "held", "repaint", "breadth", "net", "dd", "trades", "win", "pf", "avg",
-              "edge", "bh", "from", "m1", "m3", "m6", "asof"]
+              "edge", "bh", "from", "m1", "m3", "m6", "asof", "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6",
+              "sharpe", "sortino", "bars_held", "tpm", "spark"]
 PERIOD_TF = {"5m": "5m", "15m": "15m", "1h": "1H", "daily": "Daily"}
 
 
@@ -50,6 +51,15 @@ def wilson_low(k, n, z=1.645):
 def clamp(v, lo=0.0, hi=100.0): return max(lo, min(hi, v))
 def rnd(v, d=2): return None if v is None else round(v, d)
 def compact(d): return {k: v for k, v in d.items() if v is not None}
+
+
+def spark(c, n=24):
+    """A tiny equity line for the table: up to n points of the stored curve."""
+    if not c or not c.get("s"): return None
+    s = c["s"]; step = max(1, len(s) // n)
+    pts = s[::step]
+    if pts[-1] != s[-1]: pts.append(s[-1])
+    return [round(v, 1) for v in pts]
 
 
 def practicality(trades, dd):
@@ -136,6 +146,10 @@ def main():
             "m1": pr["p1m"].get("net", 0.0) if pr else None, "m3": pr["p3m"].get("net", 0.0) if pr else None,
             "m6": pr["p6m"].get("net", 0.0) if pr else None, "asof": pr["end"] if pr else None,
             "recent": {k: pr[k] for k in ("p1m", "p3m", "p6m", "months")} if pr else None,
+            **{f"t{k}": (pr[f"p{k}m"].get("n") if pr else None) for k in (1, 3, 6)},
+            **{f"w{k}": (pr[f"p{k}m"].get("win") if pr else None) for k in (1, 3, 6)},
+            **{f"pf{k}": (pr[f"p{k}m"].get("pf") if pr else None) for k in (1, 3, 6)},
+            "spark": spark(curves.get(f"{tk}|{key}")),
             "id": key, "src": "tv", "sid": sid, "tf": tf, "score": score,
             "parts": {k: round(v) for k, v in parts.items()}, "held": pine_held(r), "repaint": rep,
             "breadth": [b[1], b[2]],
@@ -180,7 +194,8 @@ def main():
             # TrendSpider's own figures, as of the day that batch ran (not today)
             "m1": rnd(rec_d.get("net_perf_1mo")), "m3": rnd(rec_d.get("net_perf_3mo")), "m6": rnd(rec_d.get("net_perf_6mo")),
             "asof": (rec_d.get("timestamp") or "")[:10] or None,
-            "recent": None,
+            "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
+            "pf1": None, "pf3": None, "pf6": None, "spark": None,
             "id": key, "src": "ts", "sid": sid, "tf": tf, "score": round(st.fmean(parts.values())),
             "parts": {k: round(v) for k, v in parts.items()},
             "held": cons == 100 and beat and (deep.get("net_profit_pct") or 0) > 0, "repaint": None, "breadth": [b[1], b[2]],
