@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
 import { int, num, pct, tone } from "@/lib/format";
-import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TF_ORDER, type Filter } from "@/lib/columns";
+import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TagChips, TF_ORDER, type Filter } from "@/lib/columns";
 import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
 import ReportPanel from "./ReportPanel";
 import SymbolAnalytics from "./SymbolAnalytics";
@@ -148,12 +148,11 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                       className={`cursor-pointer border-t border-line-soft ${selected?.id === r.id ? "bg-signal-soft/60" : "hover:bg-panel"}`}>
                       {cols.map((c) => c.key === "strategy" ? (
                         <td key={c.key} className="max-w-[22rem] px-3 py-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate">{title(r)}</span>
-                            {r.held && <span title="Held up: profitable per trade early and recently, beat holding" className="text-gain">✓</span>}
-                            {r.repaint === "repaints" && <span className="rounded bg-loss/15 px-1 text-[0.62rem] font-semibold text-loss">REPAINTS</span>}
+                          <div className="truncate">{title(r)}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                            <span className="text-[0.7rem] text-ink-faint">{SOURCE_LABEL[r.src]}</span>
+                            <TagChips r={r} />
                           </div>
-                          <div className="text-[0.7rem] text-ink-faint">{SOURCE_LABEL[r.src]}</div>
                         </td>
                       ) : (
                         <td key={c.key} className={`whitespace-nowrap px-3 py-2 ${c.kind === "number" ? "num text-right" : "text-ink-dim"}`}>

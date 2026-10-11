@@ -15,10 +15,42 @@ export type Col = {
 };
 
 const n = (v: number | null | undefined) => (v === undefined ? null : v);
+
+/** Labels shown under a strategy's name, beside its source. Order = importance. */
+export type Tag = { label: string; tone: "gain" | "loss" | "warn" | "signal" | "muted"; hint: string };
+export function tagsOf(r: Run): Tag[] {
+  const x = r as any, t: Tag[] = [];
+  if (r.held) t.push({ label: "Held up", tone: "gain", hint: "Made money per trade early and recently, and beat holding the stock" });
+  if (r.repaint === "repaints") t.push({ label: "Repaints", tone: "loss", hint: "Trades changed when re-run with closed bars only: the backtest used future data" });
+  else if (r.repaint === "vectors_present") t.push({ label: "Live differs", tone: "warn", hint: "History matched with closed bars, but parts of the script behave differently on the live bar" });
+  else if (r.repaint === "clean") t.push({ label: "No repaint", tone: "muted", hint: "Passed Foresight's replay check" });
+  if ((r.win ?? 0) >= 85 || (r.pf ?? 0) >= 5)
+    t.push({ label: "Check fills", tone: "warn", hint: "Win rate ≥ 85% or profit factor ≥ 5: often the tester's optimistic fills inside a bar, not a real edge" });
+  if ((x.t1 ?? 0) > 0) t.push({ label: "Active", tone: "signal", hint: "Closed at least one trade in the last month" });
+  if (x.dir === "long") t.push({ label: "Long only", tone: "muted", hint: "Only buys" });
+  else if (x.dir === "short") t.push({ label: "Short only", tone: "muted", hint: "Only sells short" });
+  else if (x.dir === "both") t.push({ label: "Long & short", tone: "muted", hint: "Trades both directions" });
+  return t;
+}
+const TAG_TONE: Record<Tag["tone"], string> = {
+  gain: "bg-gain/15 text-gain", loss: "bg-loss/15 text-loss", warn: "bg-warn/15 text-warn",
+  signal: "bg-signal/15 text-signal", muted: "bg-panel-2 text-ink-dim",
+};
+export function TagChips({ r }: { r: Run }) {
+  return (
+    <>
+      {tagsOf(r).map((t) => (
+        <span key={t.label} title={t.hint} className={`whitespace-nowrap rounded px-1.5 py-px text-[0.65rem] font-medium ${TAG_TONE[t.tone]}`}>{t.label}</span>
+      ))}
+    </>
+  );
+}
 const signed = (v: number | null, d = 1) => <span className={tone(v)}>{pct(v, d)}</span>;
 
 export const COLUMNS: Col[] = [
   { key: "strategy", label: "Strategy", kind: "text", fixed: true, get: (r, s) => s[r.sid]?.title ?? r.sid },
+  { key: "tags", label: "Tags", kind: "text", get: (r) => tagsOf(r).map((t) => t.label).join(", "),
+    hint: "Shown under the strategy name; filter with e.g. Tags has Held up" },
   { key: "tf", label: "Timeframe", kind: "text", defaultOn: true, get: (r) => r.tf },
   { key: "source", label: "Source", kind: "text", get: (r) => SOURCE_LABEL[r.src] },
   { key: "score", label: "Backtest Score", kind: "number", defaultOn: true, get: (r) => r.score,
@@ -58,6 +90,7 @@ export const COLUMNS: Col[] = [
     hint: "Profitable per trade early and recently, and beat holding the stock" },
   { key: "from", label: "Data From", kind: "text", get: (r) => r.from ?? "" },
 ];
+// "tags" is a filter/CSV field; in the table the chips under the name already show them
 export const COLUMN = Object.fromEntries(COLUMNS.map((c) => [c.key, c]));
 export const DEFAULT_COLUMNS = COLUMNS.filter((c) => c.defaultOn || c.fixed).map((c) => c.key);
 export const TF_ORDER = TIMEFRAMES as readonly string[];

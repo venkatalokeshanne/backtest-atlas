@@ -26,7 +26,7 @@ DEPTHS = (1000, 2000, 3000, 4000)
 TS_TF = {"5m": "5m", "15m": "15m", "1H": "1H", "Daily": "Daily"}
 TABLE_COLS = ["id", "src", "sid", "tf", "score", "held", "repaint", "breadth", "net", "dd", "trades", "win", "pf", "avg",
               "edge", "bh", "from", "m1", "m3", "m6", "asof", "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6",
-              "sharpe", "sortino", "bars_held", "tpm", "spark"]
+              "sharpe", "sortino", "bars_held", "tpm", "spark", "dir"]
 PERIOD_TF = {"5m": "5m", "15m": "15m", "1h": "1H", "daily": "Daily"}
 
 
@@ -150,6 +150,7 @@ def main():
             **{f"w{k}": (pr[f"p{k}m"].get("win") if pr else None) for k in (1, 3, 6)},
             **{f"pf{k}": (pr[f"p{k}m"].get("pf") if pr else None) for k in (1, 3, 6)},
             "spark": spark(curves.get(f"{tk}|{key}")),
+            "dir": ("both" if (r.get("longs") or 0) and (r.get("shorts") or 0) else "long" if (r.get("longs") or 0) else "short" if (r.get("shorts") or 0) else None),
             "id": key, "src": "tv", "sid": sid, "tf": tf, "score": score,
             "parts": {k: round(v) for k, v in parts.items()}, "held": pine_held(r), "repaint": rep,
             "breadth": [b[1], b[2]],
@@ -196,6 +197,7 @@ def main():
             "asof": (rec_d.get("timestamp") or "")[:10] or None,
             "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
             "pf1": None, "pf3": None, "pf6": None, "spark": None,
+            "dir": {"LONG": "long", "SHORT": "short"}.get((deep.get("direction") or "").upper(), "both" if deep.get("direction") else None),
             "id": key, "src": "ts", "sid": sid, "tf": tf, "score": round(st.fmean(parts.values())),
             "parts": {k: round(v) for k, v in parts.items()},
             "held": cons == 100 and beat and (deep.get("net_profit_pct") or 0) > 0, "repaint": None, "breadth": [b[1], b[2]],
