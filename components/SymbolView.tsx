@@ -18,7 +18,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
   const [tf, setTf] = useState("");
-  const [src, setSrc] = useState<"" | "tv" | "ts">("");
+  const [src, setSrc] = useStored<"" | "tv" | "ts">("atlas.source", "");
   const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
   const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
   const [q, setQ] = useState("");
@@ -120,9 +120,8 @@ export default function SymbolView({ symbol }: { symbol: string }) {
           <section className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-2.5">
               <Pills value={tf} onChange={setTf} options={[["", "All TF"], ...TIMEFRAMES.map((t) => [t, t] as [string, string])]} />
-              <Pills value={src} onChange={(v) => setSrc(v as any)} options={[["", "All sources"], ["tv", "TradingView"], ["ts", "TrendSpider"]]} />
               <FiltersButton filters={filters} onChange={setFilters} heldOnly={heldOnly} onHeldOnly={setHeldOnly}
-                showRepaint={showRepaint} onShowRepaint={setShowRepaint} />
+                showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
