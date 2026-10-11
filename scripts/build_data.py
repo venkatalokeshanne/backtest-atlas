@@ -388,8 +388,8 @@ def main():
     (OUT / "symbol").mkdir(parents=True, exist_ok=True)
     index = []
     for tk, runs in sorted(per_symbol.items()):
-        # rank on realistic fills where the re-run exists, TradingView fills otherwise
-        eff = lambda x: x["r_score"] if x.get("fills") else x["score"]
+        # the original view (TradingView fills) is the default ranking; realistic fills are a switch on the stock page
+        eff = lambda x: x["score"]
         runs.sort(key=lambda x: (eff(x) is None, -(eff(x) or 0)))
         scored = [x for x in runs if eff(x) is not None]
         last = None
@@ -402,7 +402,7 @@ def main():
         stats = {"backtests": len(runs), "strategies": len({x["sid"] for x in runs}),
                  "tv": sum(1 for x in runs if x["src"] == "tv"), "ts": sum(1 for x in runs if x["src"] == "ts"),
                  "held": sum(1 for x in scored if x["held"]),                       # backtests (strategy x timeframe)
-                 "held_strategies": len({x["sid"] for x in scored if (x["r_held"] if x.get("fills") else x["held"])}),
+                 "held_strategies": len({x["sid"] for x in scored if x["held"]}),
                  "fill_checked": sum(1 for x in runs if x.get("fills")),
                  "survives_fills": sum(1 for x in runs if x.get("fills") == "survives"),
                  "beat_bh_pct": round(100 * sum(1 for x in scored if (x["edge"] or 0) > 0) / len(scored), 1) if scored else None,
@@ -426,7 +426,7 @@ def main():
         index.append({"symbol": tk, "name": doc["name"], "exchange": doc["exchange"], "type": doc["type"], "last": last,
                       "lists": doc["lists"], "strategies": stats["strategies"], "backtests": stats["backtests"],
                       "held": stats["held_strategies"], "best": {"sid": best["sid"], "tf": best["tf"], "score": eff(best), "src": best["src"],
-                               "realistic": bool(best.get("fills"))} if best else None,
+                               "fills": best.get("fills")} if best else None,
                       "survives": stats["survives_fills"], "checked": stats["fill_checked"]})
     (OUT / "symbols.json").write_text(json.dumps({"generated": time.strftime("%Y-%m-%d %H:%M"), "lists": list(lists),
                                                  "symbols": index}, separators=(",", ":")), encoding="utf-8")

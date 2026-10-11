@@ -19,7 +19,9 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
   const [tf, setTf] = useStored<string>("atlas.tf", "");          // kept when you switch stock
   // which fills the numbers use: realistic (Foresight strict re-run) by default, TradingView's on request
-  const [fills, setFills] = useStored<Fills>("atlas.fills", "realistic");
+  // off by default: the original view with TradingView's fills; on: realistic fills (Foresight strict re-run)
+  const [realisticOn, setRealisticOn] = useStored<boolean>("atlas.realistic", false);
+  const fills: Fills = realisticOn ? "realistic" : "tv";
   const [onlyChecked, setOnlyChecked] = useStored<boolean>("atlas.onlyChecked", false);
   const [src, setSrc] = useStored<"" | "tv" | "ts">("atlas.source", "");
   const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
@@ -130,15 +132,10 @@ export default function SymbolView({ symbol }: { symbol: string }) {
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <section className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-ink-faint">Fills</span>
-                <Pills value={fills} onChange={(v) => setFills(v as Fills)}
-                  options={[["realistic", "Realistic"], ["tv", "TradingView"]]} />
-              </div>
               <Pills value={tf} onChange={setTf} options={[["", "All TF"], ...TIMEFRAMES.map((t) => [t, t] as [string, string])]} />
               <FiltersButton filters={filters} onChange={setFilters} heldOnly={heldOnly} onHeldOnly={setHeldOnly}
                 showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")}
-                onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} />
+                onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} realistic={realisticOn} onRealistic={setRealisticOn} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
