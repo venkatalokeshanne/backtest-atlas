@@ -55,7 +55,7 @@ export const COLUMNS: Col[] = [
   { key: "source", label: "Source", kind: "text", get: (r) => SOURCE_LABEL[r.src] },
   { key: "score", label: "Backtest Score", kind: "number", defaultOn: true, get: (r) => r.score,
     render: (r) => <span className={`num rounded px-1.5 py-0.5 text-xs font-semibold ${scoreTone(r.score)}`}>{r.score ?? "—"}</span>,
-    hint: "0–100: consistency, breadth across stocks, edge, practicality" },
+    hint: "0–100: consistency 20%, breadth across stocks 25%, edge 20%, practicality 15%, recent 6 months 20% (TradingView); ×0.6 when Check fills" },
   { key: "spark", label: "Net % (graph)", kind: "number", get: () => null, render: (r) => <Spark v={(r as any).spark} />,
     hint: "Running sum of per-trade net %; stored for each stock's top TradingView backtests" },
   { key: "net", label: "Net %", kind: "number", defaultOn: true, get: (r) => n(r.net), render: (r) => signed(r.net) },

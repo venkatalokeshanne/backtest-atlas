@@ -23,7 +23,9 @@ export type Run = {
 export type PeriodStat = { n: number; net?: number; win?: number; pf?: number | null };
 export type Window = { n?: number; avg?: number; pf?: number; win?: number; net?: number; dd?: number; edge?: number; bh?: number; from?: string };
 export type RunDetail = {
-  id: string; parts: Record<"consistency" | "breadth" | "edge" | "practicality", number>;
+  id: string; parts: Record<"consistency" | "breadth" | "edge" | "practicality" | "recent", number | null>;
+  /** win rate >= 85% or PF >= 5: score multiplied by 0.6 until verified */
+  fills_flag?: boolean;
   med: number | null; longs: number | null; shorts: number | null; bars_held: number | null;
   sharpe: number | null; sortino: number | null; tpm: number | null; to: string | null; bars: number | null;
   windows: Record<string, Window>;

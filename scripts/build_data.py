@@ -6,13 +6,17 @@
 Writes public/data/symbols.json (the "Explore by symbol" index), public/data/strategies.json and
 public/data/symbol/<TICKER>.json (every backtest on that symbol, with its score and report).
 
-Backtest Score (0-100) = mean of four parts, each 0-100:
+Backtest Score v2 (0-100) = weighted mean of five parts, each 0-100 (TrendSpider: the first four, renormalised):
   Consistency  share of the windows it was judged on that made money per trade
                (TradingView: first 70%, last 30%, last 1000/2000/3000/4000 bars; TrendSpider: the 4 depths)
   Breadth      the same strategy and timeframe across all our tickers: share that held up, marked down when
                there are few (lower end of the 90% Wilson interval)
   Edge         profit factor (1 -> 0, 2+ -> 100), halved when it did not beat simply holding the stock
-  Practicality enough trades to mean something (100+) and a drawdown that is livable
+  Practicality enough trades to mean something (100+) and a drawdown that is livable          (15%)
+  Recent       TradingView only: last 6 calendar months (share profitable), last-6-month PF, last 3 / 1 months
+                                                                                              (20%)
+  Consistency 20%, Breadth 25%, Edge 20% (x a trade-count confidence factor: 200+ trades = full).
+  Win rate >= 85% or PF >= 5 ("Check fills"): the score x 0.6 until verified with realistic fills.
 Repainting strategies (Foresight's replay check) get no score and are flagged.
 Run: python scripts/build_data.py"""
 import json, math, glob, statistics as st, collections, time
@@ -66,6 +70,49 @@ def practicality(trades, dd):
     t = min(1.0, (trades or 0) / 100)
     d = max(0.0, 1 - abs(dd or 0) / 150)
     return 100 * t * d
+
+
+# Score v2 weights. TradingView backtests have a fifth part, Recent; TrendSpider's recent figures are weeks old
+# and have no monthly breakdown, so it is scored on the other four, renormalised to the same total.
+WEIGHTS = {"consistency": 0.20, "breadth": 0.25, "edge": 0.20, "practicality": 0.15, "recent": 0.20}
+CHECK_FILLS_FACTOR = 0.6         # win rate >= 85% or PF >= 5: usually optimistic fills inside a bar, not an edge
+
+
+def confidence(trades):
+    """How much the trade count proves: 200+ trades = full weight, 50 = half. Applied to Edge."""
+    return min(1.0, math.sqrt(max(trades or 0, 0) / 200))
+
+
+def recent_part(pr):
+    """0-100 from the last 6 months (TradingView only). None when not computed.
+    50% monthly consistency: share of traded months that were profitable, pulled to neutral below 4 traded months
+    35% last-6-months strength: profit factor (1 -> 0, 2+ -> 100), scaled down below 30 trades
+    15% last 3 months and last month: profitable or not, each weighted by its trade count (10+ = full)"""
+    if not pr: return None
+    traded = [m for m in pr["months"] if m.get("n")]
+    k = len(traded)
+    pos = sum(1 for m in traded if (m.get("net") or 0) > 0)
+    monthly = 100 * (pos + 0.5 * max(0, 4 - k)) / max(k, 4)
+    p6 = pr["p6m"]
+    if not p6.get("n"):
+        six = 0.0
+    else:
+        pf6 = p6.get("pf")
+        base = 100.0 if pf6 is None and (p6.get("net") or 0) > 0 else clamp(((pf6 or 0) - 1) * 100)
+        six = base * min(1.0, p6["n"] / 30)
+    def sig(x):
+        n = x.get("n") or 0
+        if not n: return 50.0
+        return 50 + (50 if (x.get("net") or 0) > 0 else -50) * min(1.0, n / 10)
+    short = (sig(pr["p3m"]) + sig(pr["p1m"])) / 2
+    return 0.5 * monthly + 0.35 * six + 0.15 * short
+
+
+def total_score(parts, win, pf):
+    w = {k: v for k, v in WEIGHTS.items() if parts.get(k) is not None}
+    base = sum(parts[k] * w[k] for k in w) / sum(w.values())
+    flagged = (win or 0) >= 85 or (pf or 0) >= 5
+    return round(base * (CHECK_FILLS_FACTOR if flagged else 1.0)), flagged
 
 
 def edge_part(pf, beat):
@@ -137,11 +184,13 @@ def main():
         cons = 100 * sum(1 for w in wins if w > 0) / len(wins) if wins else 0
         b = breadth.get(("tv", sid, tf), (0, 0, 0))
         beat = (r.get("edge_trade") or 0) > 0
-        parts = {"consistency": cons, "breadth": b[0], "edge": edge_part(r.get("profit_factor"), beat),
-                 "practicality": practicality(r.get("trades"), r.get("trade_max_dd"))}
-        score = None if rep == "repaints" else round(st.fmean(parts.values()))
         key = f"tv:{sid}:{tf}"
         pr = periods.get((tk, tf, sid))
+        parts = {"consistency": cons, "breadth": b[0],
+                 "edge": edge_part(r.get("profit_factor"), beat) * confidence(r.get("trades")),
+                 "practicality": practicality(r.get("trades"), r.get("trade_max_dd")), "recent": recent_part(pr)}
+        score, flagged = total_score(parts, r.get("win_rate"), r.get("profit_factor"))
+        if rep == "repaints": score = None
         per_symbol[tk].append({
             "m1": pr["p1m"].get("net", 0.0) if pr else None, "m3": pr["p3m"].get("net", 0.0) if pr else None,
             "m6": pr["p6m"].get("net", 0.0) if pr else None, "asof": pr["end"] if pr else None,
@@ -152,7 +201,8 @@ def main():
             "spark": spark(curves.get(f"{tk}|{key}")),
             "dir": ("both" if (r.get("longs") or 0) and (r.get("shorts") or 0) else "long" if (r.get("longs") or 0) else "short" if (r.get("shorts") or 0) else None),
             "id": key, "src": "tv", "sid": sid, "tf": tf, "score": score,
-            "parts": {k: round(v) for k, v in parts.items()}, "held": pine_held(r), "repaint": rep,
+            "parts": {k: (None if v is None else round(v)) for k, v in parts.items()}, "fills_flag": flagged,
+            "held": pine_held(r), "repaint": rep,
             "breadth": [b[1], b[2]],
             "net": rnd(r.get("net_profit_pct")), "dd": rnd(r.get("trade_max_dd")), "trades": r.get("trades"),
             "win": rnd(r.get("win_rate"), 1), "pf": rnd(r.get("profit_factor")), "avg": rnd(r.get("avg_trade"), 3),
@@ -187,8 +237,9 @@ def main():
         aw, al = deep.get("avg_winner"), deep.get("avg_loser")
         pf = (win * aw) / ((1 - win) * abs(al)) if aw is not None and al and win < 1 else None
         beat = (deep.get("net_profit_pct") or 0) > (deep.get("asset_perf") or 0)
-        parts = {"consistency": cons, "breadth": b[0], "edge": edge_part(pf, beat),
-                 "practicality": practicality(deep.get("trade_count"), deep.get("max_drawdown"))}
+        parts = {"consistency": cons, "breadth": b[0], "edge": edge_part(pf, beat) * confidence(deep.get("trade_count")),
+                 "practicality": practicality(deep.get("trade_count"), deep.get("max_drawdown")), "recent": None}
+        ts_score, flagged = total_score(parts, deep.get("win_rate"), pf)
         key = f"ts:{sid}:{tf}"
         rec_d = d[max(dp for dp, x in d.items())]
         per_symbol[tk].append({
@@ -198,8 +249,8 @@ def main():
             "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
             "pf1": None, "pf3": None, "pf6": None, "spark": None,
             "dir": {"LONG": "long", "SHORT": "short"}.get((deep.get("direction") or "").upper(), "both" if deep.get("direction") else None),
-            "id": key, "src": "ts", "sid": sid, "tf": tf, "score": round(st.fmean(parts.values())),
-            "parts": {k: round(v) for k, v in parts.items()},
+            "id": key, "src": "ts", "sid": sid, "tf": tf, "score": ts_score,
+            "parts": {k: (None if v is None else round(v)) for k, v in parts.items()}, "fills_flag": flagged,
             "held": cons == 100 and beat and (deep.get("net_profit_pct") or 0) > 0, "repaint": None, "breadth": [b[1], b[2]],
             "net": rnd(deep.get("net_profit_pct")), "dd": rnd(deep.get("max_drawdown")), "trades": deep.get("trade_count"),
             "win": rnd(deep.get("win_rate"), 1), "pf": rnd(pf), "avg": rnd(deep.get("avg_trade"), 3), "med": None,

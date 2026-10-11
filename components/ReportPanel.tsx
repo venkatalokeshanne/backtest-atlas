@@ -5,11 +5,12 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { SOURCE_LABEL, type Run, type RunDetail, type Strategy } from "@/lib/data";
 import { int, num, pct, scoreTone, tone } from "@/lib/format";
 
-const PARTS: { k: keyof RunDetail["parts"]; label: string; hint: string }[] = [
-  { k: "consistency", label: "Consistency", hint: "Share of the windows it was judged on (early, recent, last 1000–4000 bars) that made money per trade" },
-  { k: "breadth", label: "Breadth", hint: "Same strategy and timeframe across all stocks: share that held up, marked down when few" },
-  { k: "edge", label: "Edge", hint: "Profit factor (1 → 0, 2+ → 100), halved when it did not beat holding the stock" },
-  { k: "practicality", label: "Practicality", hint: "Enough trades (100+) and a livable drawdown" },
+const PARTS: { k: keyof RunDetail["parts"]; label: string; weight: string; hint: string }[] = [
+  { k: "consistency", label: "Consistency", weight: "20%", hint: "Share of the windows it was judged on (first 70%, last 30%, last 1000–4000 bars) that made money per trade" },
+  { k: "breadth", label: "Breadth", weight: "25%", hint: "Same strategy and timeframe across all stocks: share that held up, marked down when few" },
+  { k: "edge", label: "Edge", weight: "20%", hint: "Profit factor (1 → 0, 2+ → 100), halved when it did not beat holding the stock, scaled by trade count (200+ trades = full)" },
+  { k: "practicality", label: "Practicality", weight: "15%", hint: "Enough trades (100+) and a livable drawdown" },
+  { k: "recent", label: "Recent", weight: "20%", hint: "Last 6 months: share of months profitable (50%), 6-month profit factor (35%), last 3 months and last month (15%); weighted by trade count" },
 ];
 const WINDOW_LABEL: Record<string, string> = { first70: "First 70% of history", last30: "Last 30% of history",
   "1000": "Last 1000 bars", "2000": "Last 2000 bars", "3000": "Last 3000 bars", "4000": "Last 4000 bars" };
@@ -76,12 +77,31 @@ export default function ReportPanel({ run, detail, loading, strategy, symbol, na
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Backtest score</h3>
         {detail ? (
           <div className="flex flex-col gap-2">
-            {PARTS.map((p) => (
-              <div key={p.k} title={p.hint}>
-                <div className="flex justify-between text-sm"><span className="text-ink-dim">{p.label}</span><span className="num">{detail.parts[p.k]}</span></div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded bg-panel-2"><div className="h-full rounded bg-signal" style={{ width: `${detail.parts[p.k]}%` }} /></div>
-              </div>
-            ))}
+            {PARTS.map((p) => {
+              const v = detail.parts[p.k];
+              return (
+                <div key={p.k} title={p.hint}>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-ink-dim">{p.label} <span className="text-ink-faint">· {v == null ? "not used" : p.weight}</span></span>
+                    <span className="num">{v ?? "—"}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded bg-panel-2">
+                    <div className="h-full rounded bg-signal" style={{ width: `${v ?? 0}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {detail.fills_flag && (
+              <p className="rounded-md bg-warn/10 px-2 py-1.5 text-xs text-warn">
+                Check fills: win rate ≥ 85% or profit factor ≥ 5, so the score is multiplied by 0.6 until verified with realistic fills.
+              </p>
+            )}
+            {detail.parts.recent == null && (
+              <p className="text-xs text-ink-faint">
+                {run.src === "ts" ? "TrendSpider: scored on the first four parts (its recent figures are from its own run date, with no monthly breakdown)."
+                  : "Recent performance not computed yet: scored on the first four parts for now."}
+              </p>
+            )}
             <p className="text-xs text-ink-faint">
               Breadth: held up on <span className="num">{run.breadth[0]}</span> of <span className="num">{run.breadth[1]}</span> stocks with this strategy and timeframe.
             </p>
