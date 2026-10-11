@@ -169,7 +169,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
             </div>
             {data && (
               <div className="flex items-center justify-between text-sm text-ink-dim">
-                <span>{int(rows.length)} backtests · duplicates hidden</span>
+                <span>{int(rows.length)} backtests</span>
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-1.5">Rows
                     <select id="page-size" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
@@ -178,7 +178,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                     </select>
                   </label>
                   <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-md border border-line px-2.5 py-1 disabled:opacity-40">←</button>
-                  <span className="num">{page} / {pages}</span>
+                  <span className="num whitespace-nowrap">{page} / {pages}</span>
                   <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-md border border-line px-2.5 py-1 disabled:opacity-40">→</button>
                 </div>
               </div>
