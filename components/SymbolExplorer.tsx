@@ -79,20 +79,20 @@ export default function SymbolExplorer() {
         </div>
         <div className="ml-auto flex w-full gap-2 sm:w-auto">
           <input id="explore-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by ticker or name"
-            className="min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm outline-none focus:border-signal/60 sm:w-56" />
+            className="min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-base sm:text-sm outline-none focus:border-signal/60 sm:w-56" />
           <select id="explore-sort" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort symbols"
-            className="rounded-lg border border-line bg-panel px-2 py-1.5 text-sm outline-none">
+            className="rounded-lg border border-line bg-panel px-2 py-1.5 text-base sm:text-sm outline-none">
             {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         </div>
       </div>
 
       {!index ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 9 }).map((_, i) => <div key={i} className="h-36 animate-pulse rounded-xl border border-line bg-panel" />)}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((s) => <SymbolCard key={s.symbol} s={s} best={s.best ? strategies?.[s.best.sid] : undefined} />)}
           {shown.length === 0 && <p className="text-ink-dim">No stock matches.</p>}
         </div>
@@ -104,7 +104,7 @@ export default function SymbolExplorer() {
 function SymbolCard({ s, best }: { s: SymbolSummary; best?: Strategy }) {
   return (
     <Link href={`/symbols/${s.symbol}`}
-      className="group flex flex-col gap-3 rounded-xl border border-line bg-panel p-4 transition-colors hover:border-signal/40 hover:bg-panel-2">
+      className="group flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-panel p-4 transition-colors hover:border-signal/40 hover:bg-panel-2">
       <div className="flex items-start gap-3">
         <span className="num grid h-10 w-12 shrink-0 place-items-center rounded-lg bg-panel-2 text-xs font-semibold text-ink group-hover:bg-ground">
           {s.symbol.slice(0, 4)}

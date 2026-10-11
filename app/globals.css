@@ -21,8 +21,9 @@
   --color-warn: #fbbf24;
 }
 
-html { color-scheme: dark; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
+  touch-action: manipulation;   /* no double-tap zoom */
   background: var(--color-ground);
   color: var(--color-ink);
   font-family: var(--font-sans);

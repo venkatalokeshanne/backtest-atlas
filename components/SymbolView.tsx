@@ -121,10 +121,10 @@ export default function SymbolView({ symbol }: { symbol: string }) {
               <label className="flex items-center gap-1.5 text-sm text-ink-dim">
                 Min trades
                 <input id="min-trades" type="number" min={0} value={minTrades} onChange={(e) => setMinTrades(Number(e.target.value) || 0)}
-                  className="num w-16 rounded-md border border-line bg-ground px-2 py-1 text-sm outline-none" />
+                  className="num w-16 rounded-md border border-line bg-ground px-2 py-1 text-base sm:text-sm outline-none" />
               </label>
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
-                className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-sm outline-none focus:border-signal/60" />
+                className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
               <button onClick={downloadCsv} className="rounded-md border border-line px-2.5 py-1 text-sm text-ink-dim hover:text-ink" title="Download these rows as CSV">CSV</button>
             </div>
 

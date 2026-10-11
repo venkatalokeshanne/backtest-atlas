@@ -94,7 +94,7 @@ function SymbolSearch({ index }: { index: SymbolIndex | null }) {
         onBlur={() => setTimeout(() => setFocus(false), 150)}
         onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) go(hits[0].symbol); }}
         placeholder="Search a symbol — INFQ, NVDA, Apple…" aria-label="Search a symbol"
-        className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-signal/60" />
+        className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-base sm:text-sm outline-none placeholder:text-ink-faint focus:border-signal/60" />
       {focus && hits.length > 0 && (
         <ul className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-line bg-panel shadow-2xl">
           {hits.map((h) => (
