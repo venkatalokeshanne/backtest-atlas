@@ -67,7 +67,11 @@ export default function AllBacktestsView() {
     const p = new URLSearchParams(params); p.set("page", String(page)); p.set("size", String(pageSize));
     fetch(`/api/backtests?${p}`, { signal: c.signal })
       .then((r) => { if (!r.ok) throw new Error(`server answered ${r.status}`); return r.json(); })
-      .then((d: BacktestsPage) => { setData(d); setError(""); setLoading(false); })
+      .then((d: BacktestsPage) => {
+        setData(d); setError(""); setLoading(false);
+        // fetch the next page ahead (the browser keeps it), so → is instant
+        if (page * pageSize < d.total) { const n = new URLSearchParams(p); n.set("page", String(page + 1)); fetch(`/api/backtests?${n}`).catch(() => {}); }
+      })
       .catch((e) => { if (e.name !== "AbortError") { setError(String(e.message ?? e)); setLoading(false); } });
     return () => c.abort();
   }, [params, page, pageSize]);

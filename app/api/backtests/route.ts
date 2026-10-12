@@ -7,6 +7,7 @@ import { TIMEFRAMES } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 const CSV_LIMIT = 10000;          // a function's response is capped at a few MB
+const CACHE = "public, max-age=300, s-maxage=31536000";
 
 function query(sp: URLSearchParams): Query {
   let filters: Filter[] = [];
@@ -35,10 +36,12 @@ export async function GET(req: Request) {
     const body = rows.map((r: any) => [r.sym, ...exp.map((c) => c.get(r, strategies)), r.repaint, r.asof].map(esc).join(","));
     const note = total > CSV_LIMIT ? [`# first ${CSV_LIMIT} of ${total} rows in the current sort order; narrow the filters for the rest`] : [];
     return new NextResponse([...note, head, ...body].join("\n"), {
-      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="all_backtests.csv"' },
+      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="all_backtests.csv"', "Cache-Control": CACHE },
     });
   }
   const size = Math.min(100, Math.max(1, Number(sp.get("size")) || 30));
   const pageNo = Math.max(1, Number(sp.get("page")) || 1);
-  return NextResponse.json(page(q, pageNo, size));
+  // the data only changes with a new deployment (which empties Vercel's cache), so any answer can be cached:
+  // the browser keeps it 5 minutes, Vercel's network until the next deployment
+  return NextResponse.json(page(q, pageNo, size), { headers: { "Cache-Control": CACHE } });
 }

@@ -24,6 +24,7 @@ const SWAP = ["score", "held", "net", "dd", "trades", "win", "pf", "avg", "edge"
   "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth", "spark"];
 
 const tables = new Map<string, Table>();
+const NAN_ARR = new Float64Array(0);
 /** Columns whose sort value is just the stored number (the column's get() returns it unchanged, dd as its absolute value). */
 const DIRECT = new Set(["score", "net", "dd", "trades", "win", "pf", "avg", "edge", "bh", "m1", "m3", "m6", "t1", "t3", "t6",
   "w1", "w3", "w6", "pf1", "pf3", "pf6", "sharpe", "sortino", "bars_held", "tpm", "acct"]);
@@ -65,27 +66,34 @@ function table(tf: string): Table {
   return t;
 }
 
-/** A cursor over table t; realistic = read r_* numbers for fill-checked rows (same rule as view() in data.ts). */
+/** A cursor over table t; realistic = read r_* numbers for fill-checked rows (same rule as view() in data.ts).
+ *  Every column gets its own small reader, resolved once, so reading a field is one array lookup. */
+function reader(t: Table, c: string): (i: number) => any {
+  const a = t.num[c];
+  if (a) return BOOL.has(c) ? (i) => { const v = a[i]; return v !== v ? null : v === 1; } : (i) => { const v = a[i]; return v !== v ? null : v; };
+  const s = t.str[c];
+  if (s) { const { dict, codes } = s; return (i) => { const k = codes[i]; return k < 0 ? null : dict[k]; }; }
+  const l = t.list[c];
+  if (l) return (i) => l[i] ?? null;
+  const sp = t.sparse[c];
+  if (sp) return (i) => sp[i] ?? null;
+  return () => undefined;
+}
 function cursor(t: Table, realistic: boolean): Cursor {
-  const raw = (c: string, i: number): any => {
-    if (c in t.num) { const v = t.num[c][i]; return Number.isNaN(v) ? null : BOOL.has(c) ? v === 1 : v; }
-    if (c in t.str) { const k = t.str[c].codes[i]; return k < 0 ? null : t.str[c].dict[k]; }
-    if (c in t.list) return t.list[c][i] ?? null;
-    if (c in t.sparse) return t.sparse[c][i] ?? null;
-    return undefined;
-  };
-  const checked = (i: number) => t.str.fills.codes[i] >= 0;
+  const fillsC = t.str.fills.codes, src = reader(t, "src"), sid = reader(t, "sid");
   const proto: any = {};
   for (const c of t.keys) {
-    Object.defineProperty(proto, c, {
-      enumerable: true,
-      get(this: Cursor) {
-        if (c === "id") return `${raw("src", this.i)}:${raw("sid", this.i)}:${t.tf}`;
-        if (c === "mode") return realistic && checked(this.i) ? "realistic" : "tv";
-        if (realistic && SWAP.includes(c) && checked(this.i)) return raw(`r_${c}`, this.i);
-        return raw(c, this.i);
-      },
-    });
+    let get: (this: Cursor) => any;
+    if (c === "id") get = function () { return `${src(this.i)}:${sid(this.i)}:${t.tf}`; };
+    else if (c === "mode") get = function () { return realistic && fillsC[this.i] >= 0 ? "realistic" : "tv"; };
+    else {
+      const base = reader(t, c);
+      if (realistic && SWAP.includes(c)) {
+        const alt = reader(t, `r_${c}`);
+        get = function () { return fillsC[this.i] >= 0 ? alt(this.i) : base(this.i); };
+      } else get = function () { return base(this.i); };
+    }
+    Object.defineProperty(proto, c, { enumerable: true, get });
   }
   const cur = Object.create(proto) as Cursor;
   cur.i = 0;
@@ -125,11 +133,14 @@ function run(q: Query): Result {
   const realistic = q.fills === "realistic";
   const s = q.q.trim().toLowerCase();
   const col = COLUMN[q.sort];
-  const hits: Hit[] = [], keys: any[] = [], checkedFlags: boolean[] = [];
+  const ht: number[] = [], hi: number[] = [], keys: any[] = [], nkeys: number[] = [], checkedFlags: number[] = [];
   // a numeric column is read straight from its array (the realistic value for fill-checked rows), else via the column's getter
   const direct = q.sort !== "tf" && q.sort !== "sym" && col?.kind === "number" && DIRECT.has(q.sort);
   tfs.forEach((tf, ti) => {
     const t = table(tf), r = cursor(t, realistic);
+    const filt = compileFilters(t, r, q.filters, realistic, S);
+    const sortArr = direct ? t.num[q.sort] : null, sortReal = direct && SWAP.includes(q.sort) ? t.num[`r_${q.sort}`] : null;
+    const sortAbs = q.sort === "dd";
     // the cheap tests run on the raw codes first; the cursor is only read for rows still in
     const fillsC = t.str.fills.codes, srcC = t.str.src.codes, repC = t.str.repaint.codes;
     const srcWant = q.src ? t.str.src.dict.indexOf(q.src) : -2, repCode = t.str.repaint.dict.indexOf("repaints");
@@ -145,33 +156,78 @@ function run(q: Query): Result {
       if (vArr && vArr[i] !== vWant) continue;
       if (s && !t.text[i].includes(s)) continue;
       r.i = i;
-      if (q.filters.length && !matches(r, S, q.filters)) continue;
-      hits.push({ t: ti, i });
-      checkedFlags.push(checked);
-      let v: any;
+      if (filt && !filt(i, checked)) continue;
+      ht.push(ti); hi.push(i);
+      checkedFlags.push(checked ? 1 : 0);
       if (direct) {
-        const a = realistic && checked && SWAP.includes(q.sort) ? t.num[`r_${q.sort}`] : t.num[q.sort];
-        const x = a ? a[i] : NaN;
-        v = Number.isNaN(x) ? null : q.sort === "dd" ? Math.abs(x) : x;
+        const x = (realistic && checked && sortReal ? sortReal : sortArr ?? NAN_ARR)[i];
+        nkeys.push(x !== x ? NaN : sortAbs ? Math.abs(x) : x);
       } else {
-        v = q.sort === "tf" ? TF_ORDER.indexOf(tf) : q.sort === "sym" ? r.sym : col?.get(r, S);
+        let v: any = q.sort === "tf" ? TF_ORDER.indexOf(tf) : q.sort === "sym" ? r.sym : col?.get(r, S);
         if (typeof v === "string") v = v.toLowerCase();
+        keys.push(v);
       }
-      keys.push(v);
     }
   });
-  const idx = hits.map((_, k) => k);
-  idx.sort((a, b) => {
-    // realistic fills: fill-checked backtests first, as on the stock page
-    if (realistic && checkedFlags[a] !== checkedFlags[b]) return checkedFlags[a] ? -1 : 1;
-    const av = keys[a], bv = keys[b];
-    if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
-    return av < bv ? -q.dir : av > bv ? q.dir : 0;
-  });
-  const res: Result = { hits: idx.map((k) => hits[k]), unchecked: checkedFlags.filter((x) => !x).length, tfs };
+  const m = hi.length, dir = q.dir;
+  const idx = new Uint32Array(m);
+  for (let k = 0; k < m; k++) idx[k] = k;
+  const cf = Uint8Array.from(checkedFlags);
+  // realistic fills: fill-checked backtests first, as on the stock page; empty values last; then the column, either way
+  if (direct) {
+    const nk = Float64Array.from(nkeys);
+    idx.sort((a, b) => {
+      if (realistic && cf[a] !== cf[b]) return cf[b] - cf[a];
+      const av = nk[a], bv = nk[b], an = av !== av, bn = bv !== bv;
+      if (an !== bn) return an ? 1 : -1;
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  } else {
+    idx.sort((a, b) => {
+      if (realistic && cf[a] !== cf[b]) return cf[b] - cf[a];
+      const av = keys[a], bv = keys[b];
+      if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  }
+  const hits: Hit[] = new Array(m);
+  let unchecked = 0;
+  for (let k = 0; k < m; k++) { const j = idx[k]; hits[k] = { t: ht[j], i: hi[j] }; unchecked += cf[k] ? 0 : 1; }
+  const res: Result = { hits, unchecked, tfs };
   resultCache.set(key, res);
   if (resultCache.size > 40) resultCache.delete(resultCache.keys().next().value!);
   return res;
+}
+
+/** The filter rows as one test per row, the same logic as matches() in columns.tsx; numeric columns read their array
+ *  directly (the realistic value for fill-checked rows), anything else goes through matches() on the cursor. */
+function compileFilters(t: Table, r: Cursor, filters: Filter[], realistic: boolean, S: Record<string, Strategy>) {
+  const parts: { join: "and" | "or"; test: (i: number, checked: boolean) => boolean }[] = [];
+  for (const f of filters) {
+    const col = COLUMN[f.key];
+    if (!col || f.value.trim() === "") continue;
+    let test: (i: number, checked: boolean) => boolean;
+    if (col.kind === "number" && DIRECT.has(f.key) && t.num[f.key]) {
+      const x = Number(f.value), le = f.op === "<=", a = t.num[f.key], ra = realistic && SWAP.includes(f.key) ? t.num[`r_${f.key}`] : null;
+      const abs = f.key === "dd";
+      test = (i, checked) => {
+        let v = ra && checked ? ra[i] : a[i];
+        if (v !== v || x !== x) return false;
+        if (abs) v = Math.abs(v);
+        return le ? v <= x : v >= x;
+      };
+    } else {
+      const one = [{ ...f, join: "and" as const }];
+      test = () => matches(r, S, one);
+    }
+    parts.push({ join: f.join, test });
+  }
+  if (!parts.length) return null;
+  return (i: number, checked: boolean) => {
+    let out = parts[0].test(i, checked);
+    for (let k = 1; k < parts.length; k++) out = parts[k].join === "or" ? out || parts[k].test(i, checked) : out && parts[k].test(i, checked);
+    return out;
+  };
 }
 
 /** One page: the rows as shown (chosen fills) and as stored (both fills, for the report's comparison). */
