@@ -32,7 +32,7 @@ export type Run = {
 };
 export type Fills = "realistic" | "tv";
 const SWAP = ["score", "held", "net", "dd", "trades", "win", "pf", "avg", "edge", "m1", "m3", "m6",
-  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth"] as const;
+  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth", "spark"] as const;
 /** The row as shown: realistic-fill numbers when chosen and available, TradingView-fill numbers otherwise. */
 export function view(r: Run, fills: Fills): Run {
   if (fills === "tv" || !r.fills) return { ...r, mode: "tv" };
@@ -51,6 +51,8 @@ export type RunDetail = {
   sharpe: number | null; sortino: number | null; tpm: number | null; to: string | null; bars: number | null;
   windows: Record<string, Window>;
   curve: { t: string[]; s: number[]; b: number[]; start: string } | null;
+  /** the same backtest's curve with realistic fills, when stored */
+  r_curve?: { t: string[]; s: number[]; b: number[]; start: string } | null;
   recent: { p1m: PeriodStat; p3m: PeriodStat; p6m: PeriodStat; months: (PeriodStat & { m: string })[] } | null;
 };
 export type SymbolData = {

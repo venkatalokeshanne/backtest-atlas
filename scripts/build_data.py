@@ -34,7 +34,7 @@ TABLE_COLS = ["id", "src", "sid", "tf", "score", "held", "repaint", "breadth", "
               # realistic fills (Foresight strict broker model + price-scaled spread); None until re-run
               "fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
               "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3", "r_pf6",
-              "r_breadth", "acct", "acct_dd", "luck", "tested"]
+              "r_breadth", "acct", "acct_dd", "luck", "tested", "r_spark"]
 PERIOD_TF = {"5m": "5m", "15m": "15m", "1h": "1H", "daily": "Daily"}
 
 
@@ -255,6 +255,8 @@ def main():
     t0 = time.time()
     names = json.loads((SCREEN / "symbols.json").read_text(encoding="utf-8")) if (SCREEN / "symbols.json").exists() else {}
     curves = json.loads((SCREEN / "curves.json").read_text(encoding="utf-8")) if (SCREEN / "curves.json").exists() else {}
+    # the same backtests' curves with realistic fills (pine_screen/curves.py, strict model)
+    r_curves = json.loads((SCREEN / "curves_strict.json").read_text(encoding="utf-8")) if (SCREEN / "curves_strict.json").exists() else {}
     prows, pstrat = pine_rows()
     periods = load_periods()
     strict = load_strict()
@@ -331,6 +333,8 @@ def main():
                             "from": r.get(f"d{d}_from")} for d in DEPTHS if r.get(f"d{d}_trades") is not None},
             }.items()},
             "curve": curves.get(f"{tk}|{key}"),
+            "r_curve": r_curves.get(f"{tk}|{key}") if rf.get("fills") else None,
+            "r_spark": spark(r_curves.get(f"{tk}|{key}")) if rf.get("fills") else None,
         })
         if sid not in strategies:
             strategies[sid] = {"title": s.get("title") or sid, "author": s.get("author"), "url": s.get("url"), "src": "tv",
@@ -357,7 +361,7 @@ def main():
             "m1": rnd(rec_d.get("net_perf_1mo")), "m3": rnd(rec_d.get("net_perf_3mo")), "m6": rnd(rec_d.get("net_perf_6mo")),
             "asof": (rec_d.get("timestamp") or "")[:10] or None,
             "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
-            "pf1": None, "pf3": None, "pf6": None, "spark": None,
+            "pf1": None, "pf3": None, "pf6": None, "spark": None, "r_spark": None, "r_curve": None,
             "dir": {"LONG": "long", "SHORT": "short"}.get((deep.get("direction") or "").upper(), "both" if deep.get("direction") else None),
             **{k: None for k in ("fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
                                  "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3",

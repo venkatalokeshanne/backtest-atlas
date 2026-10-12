@@ -32,7 +32,7 @@ export default function ReportPanel({ run, raw, detail: rawDetail, loading, stra
   const real = run?.mode === "realistic";
   const detail: RunDetail | null = rawDetail && real
     ? { ...rawDetail, parts: rawDetail.r_parts ?? rawDetail.parts, recent: rawDetail.r_recent ?? null,
-        fills_flag: !!rawDetail.r_fills_flag }
+        fills_flag: !!rawDetail.r_fills_flag, curve: rawDetail.r_curve ?? null }
     : rawDetail;
   if (!run) {
     return (
@@ -70,12 +70,13 @@ export default function ReportPanel({ run, raw, detail: rawDetail, loading, stra
 
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-          Growth vs buy &amp; hold {real && <span className="normal-case tracking-normal">· drawn with TradingView fills</span>}
+          Growth vs buy &amp; hold <span className="normal-case tracking-normal">· {real ? "realistic fills" : "TradingView fills"}</span>
         </h3>
         {loading ? <div className="h-48 animate-pulse rounded-lg bg-panel-2" />
           : detail?.curve ? <Curve c={detail.curve} />
           : <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-faint">
               {run.src === "ts" ? "TrendSpider exports carry no trade list, so there is no curve for this backtest."
+                : real && rawDetail?.curve ? "No realistic-fill curve stored for this backtest; switch Realistic fills off to see the TradingView-fill curve."
                 : "Curves are stored for each stock's top-scoring TradingView backtests; this one is not among them."}
             </p>}
       </section>
