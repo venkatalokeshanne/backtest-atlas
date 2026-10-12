@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SOURCE_LABEL, type Run, type RunDetail, type Strategy } from "@/lib/data";
@@ -47,8 +48,11 @@ export default function ReportPanel({ run, raw, detail: rawDetail, loading, stra
   const body = (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3">
-        <span className="num grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-panel-2 text-xs font-semibold">{symbol.slice(0, 4)}</span>
+        <span className="num grid h-11 min-w-11 shrink-0 place-items-center rounded-lg bg-panel-2 px-1.5 text-xs font-semibold">{symbol}</span>
         <div className="min-w-0 flex-1">
+          <Link href={`/symbols/${symbol}`} className="block truncate text-sm text-ink-dim hover:text-signal">
+            <span className="num font-semibold text-ink">{symbol}</span>{name && name !== symbol ? <> · {name}</> : null}
+          </Link>
           <h2 className="font-semibold leading-snug">{title}</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
             <span className="rounded border border-line px-1.5 py-0.5 text-ink-dim">{run.tf}</span>
