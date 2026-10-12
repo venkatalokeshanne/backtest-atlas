@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, view, type Fills, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
+import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, tfOfId, TIMEFRAMES, view, type Fills, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
 import { int, num, pct, tone } from "@/lib/format";
 import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TF_ORDER, VerdictBadge, verdictOf, type Filter, type Verdict } from "@/lib/columns";
 import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
@@ -14,7 +14,7 @@ const PAGE_SIZES = [20, 30, 50, 100];
 export default function SymbolView({ symbol }: { symbol: string }) {
   const [data, setData] = useState<SymbolData | null>(null);
   const [strategies, setStrategies] = useState<Record<string, Strategy>>({});
-  const [details, setDetails] = useState<Map<string, RunDetail> | null>(null);
+  const [details, setDetails] = useState<{ id: string; detail: RunDetail | null } | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"strategies" | "analytics">("strategies");
   const [tf, setTf] = useStored<string>("atlas.tf", "");          // kept when you switch stock
@@ -50,8 +50,13 @@ export default function SymbolView({ symbol }: { symbol: string }) {
     loadSymbol(symbol).then(setData).catch((e) => setError(String(e)));
     loadStrategies().then(setStrategies);
   }, [symbol]);
-  // the report data is larger: fetch it once a row is opened
-  useEffect(() => { if (selectedId && !details) loadDetails(symbol).then(setDetails); }, [selectedId, details, symbol]);
+  // the report data is larger: fetch the opened row's timeframe file when a row is opened
+  useEffect(() => {
+    if (!selectedId) return;
+    let live = true;
+    loadDetails(symbol, tfOfId(selectedId)).then((m) => live && setDetails({ id: selectedId, detail: m.get(selectedId) ?? null }));
+    return () => { live = false; };
+  }, [selectedId, symbol]);
   useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, q, sort, dir, filters, pageSize, fills, onlyChecked, verdict]);
 
   const title = (r: Run) => strategies[r.sid]?.title ?? r.sid;
@@ -214,7 +219,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
             )}
           </section>
 
-          <ReportPanel run={selected} raw={selected ? raw.get(selected.id) ?? null : null} detail={selected ? details?.get(selected.id) ?? null : null} loading={!!selected && !details}
+          <ReportPanel run={selected} raw={selected ? raw.get(selected.id) ?? null : null} detail={selected && details?.id === selected.id ? details.detail : null} loading={!!selected && details?.id !== selected.id}
             strategy={selected ? strategies[selected.sid] : undefined} symbol={symbol} name={data?.name ?? symbol}
             onClose={() => setSelected(null)} />
         </div>
@@ -223,7 +228,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   );
 }
 
-function Pills({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
+export function Pills({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
     <div className="flex overflow-hidden rounded-md border border-line">
       {options.map(([v, l]) => (
@@ -234,7 +239,7 @@ function Pills({ value, onChange, options }: { value: string; onChange: (v: stri
   );
 }
 
-function Th({ k, label, sort, dir, on, right, hint, sortable = true }: { k: string; label: string; sort: string; dir: 1 | -1; on: (k: string) => void; right?: boolean; hint?: string; sortable?: boolean }) {
+export function Th({ k, label, sort, dir, on, right, hint, sortable = true }: { k: string; label: string; sort: string; dir: 1 | -1; on: (k: string) => void; right?: boolean; hint?: string; sortable?: boolean }) {
   const active = sort === k;
   return (
     <th className={`whitespace-nowrap px-3 py-2.5 font-semibold ${right ? "text-right" : ""}`} title={hint}

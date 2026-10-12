@@ -27,8 +27,10 @@ def finalists():
     out = []
     for tk in traded:
         t = json.loads((SITE / "symbol" / f"{tk}.json").read_text(encoding="utf-8")); ci = {c: i for i, c in enumerate(t["cols"])}
-        det = json.loads((SITE / "symbol" / f"{tk}.detail.json").read_text(encoding="utf-8")); di = {c: i for i, c in enumerate(det["cols"])}
-        detail = {r[di["id"]]: r for r in det["runs"]}
+        detail = {}                                              # one report file per stock and timeframe
+        for df in (SITE / "symbol").glob(f"{tk}.*.detail.json"):
+            det = json.loads(df.read_text(encoding="utf-8")); di = {c: i for i, c in enumerate(det["cols"])}
+            detail.update({r[di["id"]]: r for r in det["runs"]})
         for r in t["runs"]:
             g = lambda k: r[ci[k]]
             if g("src") != "tv" or g("score") is None or (g("trades") or 0) < 30 or not g("held"): continue

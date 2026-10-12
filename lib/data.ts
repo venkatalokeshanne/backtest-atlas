@@ -81,7 +81,12 @@ export async function loadSymbol(symbol: string): Promise<SymbolData> {
   const d = await getJSON<any>(`/data/symbol/${symbol}.json`);
   return { ...d, runs: decode<Run>(d.cols, d.runs) };
 }
-export async function loadDetails(symbol: string): Promise<Map<string, RunDetail>> {
-  const d = await getJSON<any>(`/data/symbol/${symbol}.detail.json`);
+/** The reports behind one stock's rows of one timeframe (one file per stock and timeframe). */
+export async function loadDetails(symbol: string, tf: string): Promise<Map<string, RunDetail>> {
+  const d = await getJSON<any>(`/data/symbol/${symbol}.${tf}.detail.json`);
   return new Map(decode<RunDetail>(d.cols, d.runs).map((r) => [r.id, r]));
 }
+/** The timeframe of a row id ("tv:<sid>:<tf>" / "ts:<name>:<tf>"). */
+export const tfOfId = (id: string) => id.slice(id.lastIndexOf(":") + 1);
+
+export type BacktestsPage = { total: number; unchecked: number; rows: (Run & { sym: string })[]; raws: (Run & { sym: string })[] };

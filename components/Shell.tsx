@@ -34,6 +34,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       </Link>
       <div>
         <div className="px-2 pb-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ink-faint">Discover</div>
+        <SideLink href="/backtests" active={path === "/backtests"} onClick={() => setOpen(false)}>All backtests</SideLink>
         <SideLink href="/symbols" active={activeList === ""} onClick={() => setOpen(false)}>Explore by symbol</SideLink>
         <div className="ml-3 mt-1 flex flex-col border-l border-line pl-2">
           {(index?.lists ?? []).map((l) => (

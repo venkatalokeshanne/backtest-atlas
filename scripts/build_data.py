@@ -19,11 +19,12 @@ Backtest Score v2 (0-100) = weighted mean of five parts, each 0-100 (TrendSpider
   Win rate >= 85% or PF >= 5 ("Check fills"): the score x 0.6 until verified with realistic fills.
 Repainting strategies (Foresight's replay check) get no score and are flagged.
 Run: python scripts/build_data.py"""
-import json, math, glob, statistics as st, collections, time
+import json, math, glob, gzip, statistics as st, collections, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "public" / "data"
+ALL = ROOT / "data" / "all"
 DASH = Path(r"C:\Users\annev\workspace\backtest-results-dashboard")
 SCREEN = Path(r"C:\Users\annev\workspace\pine_screen")
 DEPTHS = (1000, 2000, 3000, 4000)
@@ -251,6 +252,45 @@ def realistic(r, x, b, rep, tested):
     return out
 
 
+STR_COLS = {"sym", "src", "sid", "tf", "repaint", "from", "asof", "dir", "fills", "luck"}
+SPARSE_COLS = {"spark", "r_spark"}           # mostly empty: stored as {row: value}
+LIST_COLS = {"breadth", "r_breadth"}
+
+
+def columnar(cols, rows):
+    """Rows -> one array per column, so the server keeps numbers in typed arrays instead of 300k objects.
+    Text columns as a dictionary + codes (-1 = empty); id is not stored (it is src:sid:tf)."""
+    out = {"n": len(rows), "num": {}, "str": {}, "list": {}, "sparse": {}}
+    for j, c in enumerate(cols):
+        if c == "id": continue
+        vals = [r[j] for r in rows]
+        if c in STR_COLS:
+            d = sorted({v for v in vals if v is not None}); ix = {v: i for i, v in enumerate(d)}
+            out["str"][c] = {"dict": d, "codes": [ix[v] if v is not None else -1 for v in vals]}
+        elif c in SPARSE_COLS: out["sparse"][c] = {str(i): v for i, v in enumerate(vals) if v is not None}
+        elif c in LIST_COLS: out["list"][c] = vals
+        else: out["num"][c] = [None if v is None else (int(v) if isinstance(v, bool) else v) for v in vals]
+    return out
+
+
+def write_columnar(folder, name, c):
+    """Numbers and text codes as raw little-endian arrays (the server maps them straight into typed arrays, no parsing):
+    <name>.num.bin.gz  float64, one column after another, NaN = empty   (order: meta["num"])
+    <name>.str.bin.gz  int32 codes, one column after another, -1 = empty (order: meta["str"])
+    <name>.meta.json.gz  n, column names, text dictionaries, the list and sparse columns"""
+    import array
+    n = c["n"]
+    num = array.array("d"); [num.extend(float("nan") if v is None else float(v) for v in vals) for vals in c["num"].values()]
+    codes = array.array("i"); [codes.extend(s["codes"]) for s in c["str"].values()]
+    assert num.itemsize == 8 and codes.itemsize == 4
+    import sys
+    if sys.byteorder != "little": num.byteswap(); codes.byteswap()
+    meta = {"n": n, "num": list(c["num"]), "str": {k: v["dict"] for k, v in c["str"].items()}, "list": c["list"], "sparse": c["sparse"]}
+    (folder / f"{name}.num.bin.gz").write_bytes(gzip.compress(num.tobytes(), 6))
+    (folder / f"{name}.str.bin.gz").write_bytes(gzip.compress(codes.tobytes(), 6))
+    (folder / f"{name}.meta.json.gz").write_bytes(gzip.compress(json.dumps(meta, separators=(",", ":")).encode(), 6))
+
+
 def main():
     t0 = time.time()
     names = json.loads((SCREEN / "symbols.json").read_text(encoding="utf-8")) if (SCREEN / "symbols.json").exists() else {}
@@ -391,6 +431,7 @@ def main():
     lists = {w["name"]: w["tickers"] for w in wl}
     (OUT / "symbol").mkdir(parents=True, exist_ok=True)
     index = []
+    all_rows, all_cols = collections.defaultdict(list), None
     for tk, runs in sorted(per_symbol.items()):
         # the original view (TradingView fills) is the default ranking; realistic fills are a switch on the stock page
         eff = lambda x: x["score"]
@@ -416,22 +457,34 @@ def main():
                  "repainting": sum(1 for x in runs if x["repaint"] == "repaints")}
         best = scored[0] if scored else None
         info = names.get(tk, {})
-        # Two files per symbol, rows as arrays under one column list, nothing dropped:
-        #   <T>.json         what the table needs (loaded with the page)
-        #   <T>.detail.json  the report behind each row (windows, score parts, curve...), loaded on demand
+        # Files per symbol, rows as arrays under one column list, nothing dropped:
+        #   <T>.json              what the table needs (loaded with the page)
+        #   <T>.<tf>.detail.json  the report behind each row (windows, score parts, curve...), one file per timeframe,
+        #                         loaded when a row of that timeframe is opened
         cols = [c for c in TABLE_COLS if c in runs[0]]
+        assert all_cols in (None, cols), "table columns differ between symbols"
+        all_cols = cols
         dcols = [c for c in runs[0] if c not in cols or c == "id"]
         doc = {"symbol": tk, "name": info.get("name", tk), "exchange": info.get("exchange", ""), "type": info.get("type", ""),
                "last": last, "stats": stats, "lists": [n for n, t in lists.items() if tk in t],
                "cols": cols, "runs": [[x.get(c) for c in cols] for x in runs]}
         (OUT / "symbol" / f"{tk}.json").write_text(json.dumps(doc, separators=(",", ":")), encoding="utf-8")
-        (OUT / "symbol" / f"{tk}.detail.json").write_text(json.dumps(
-            {"cols": dcols, "runs": [[x.get(c) for c in dcols] for x in runs]}, separators=(",", ":")), encoding="utf-8")
+        for old in (OUT / "symbol").glob(f"{tk}.detail.json"): old.unlink()          # the former single report file
+        for tfk in sorted({x["tf"] for x in runs}):
+            (OUT / "symbol" / f"{tk}.{tfk}.detail.json").write_text(json.dumps(
+                {"cols": dcols, "runs": [[x.get(c) for c in dcols] for x in runs if x["tf"] == tfk]}, separators=(",", ":")), encoding="utf-8")
+        for x in runs: all_rows[x["tf"]].append([tk] + [x.get(c) for c in cols])
         index.append({"symbol": tk, "name": doc["name"], "exchange": doc["exchange"], "type": doc["type"], "last": last,
                       "lists": doc["lists"], "strategies": stats["strategies"], "backtests": stats["backtests"],
                       "held": stats["held_strategies"], "best": {"sid": best["sid"], "tf": best["tf"], "score": eff(best), "src": best["src"],
                                "fills": best.get("fills")} if best else None,
                       "survives": stats["survives_fills"], "checked": stats["fill_checked"]})
+    # every backtest of every stock, one gzip file per timeframe, for the All backtests page's server function
+    # (outside public/: the browser never downloads these, it asks the function for one page of rows)
+    ALL.mkdir(parents=True, exist_ok=True)
+    for f in ALL.glob("*"): f.unlink()
+    for tfk, rows in all_rows.items():
+        write_columnar(ALL, tfk, columnar(["sym"] + all_cols, rows))
     (OUT / "symbols.json").write_text(json.dumps({"generated": time.strftime("%Y-%m-%d %H:%M"), "lists": list(lists),
                                                  "symbols": index}, separators=(",", ":")), encoding="utf-8")
     (OUT / "strategies.json").write_text(json.dumps(strategies, separators=(",", ":")), encoding="utf-8")
