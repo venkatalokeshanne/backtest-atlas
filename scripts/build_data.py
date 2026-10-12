@@ -275,8 +275,9 @@ def columnar(cols, rows):
 
 def write_columnar(folder, name, c):
     """Numbers and text codes as raw little-endian arrays (the server maps them straight into typed arrays, no parsing):
-    <name>.num.bin.gz  float64, one column after another, NaN = empty   (order: meta["num"])
-    <name>.str.bin.gz  int32 codes, one column after another, -1 = empty (order: meta["str"])
+    <name>.num.bin  float64, one column after another, NaN = empty   (order: meta["num"])
+    <name>.str.bin  int32 codes, one column after another, -1 = empty (order: meta["str"])
+    (not gzipped: reading them is faster than unzipping on the server's cold start)
     <name>.meta.json.gz  n, column names, text dictionaries, the list and sparse columns"""
     import array
     n = c["n"]
@@ -286,8 +287,8 @@ def write_columnar(folder, name, c):
     import sys
     if sys.byteorder != "little": num.byteswap(); codes.byteswap()
     meta = {"n": n, "num": list(c["num"]), "str": {k: v["dict"] for k, v in c["str"].items()}, "list": c["list"], "sparse": c["sparse"]}
-    (folder / f"{name}.num.bin.gz").write_bytes(gzip.compress(num.tobytes(), 6))
-    (folder / f"{name}.str.bin.gz").write_bytes(gzip.compress(codes.tobytes(), 6))
+    (folder / f"{name}.num.bin").write_bytes(num.tobytes())
+    (folder / f"{name}.str.bin").write_bytes(codes.tobytes())
     (folder / f"{name}.meta.json.gz").write_bytes(gzip.compress(json.dumps(meta, separators=(",", ":")).encode(), 6))
 
 

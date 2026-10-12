@@ -1,5 +1,5 @@
 // Server side of the All backtests page: every backtest of every stock, filtered, sorted and paged here so the browser
-// only ever receives one page of rows. Data: data/all/<tf>.json.gz (scripts/build_data.py), one array per column.
+// only ever receives one page of rows. Data: data/all/<tf>.* (scripts/build_data.py write_columnar), one array per column.
 // Rows are read through a reusable "cursor" object whose getters point at row i, so the same column, filter and
 // verdict code as the stock page runs on 300,000+ rows without building an object per row.
 import fs from "fs";
@@ -42,10 +42,12 @@ function table(tf: string): Table {
   let t = tables.get(tf);
   if (t) return t;
   // numbers and text codes are stored as raw arrays (scripts/build_data.py write_columnar): no parsing, just views
-  const gz = (f: string) => zlib.gunzipSync(fs.readFileSync(path.join(DATA, `${tf}.${f}`)));
-  const d = JSON.parse(gz("meta.json.gz").toString("utf-8"));
+  const file = (f: string) => fs.readFileSync(path.join(DATA, `${tf}.${f}`));
+  const d = JSON.parse(zlib.gunzipSync(file("meta.json.gz")).toString("utf-8"));
   const n: number = d.n;
-  const nb = gz("num.bin.gz"), sb = gz("str.bin.gz");
+  // typed arrays need aligned memory; big file reads are, but copy if not
+  const aligned = (b: Buffer, k: number) => (b.byteOffset % k === 0 ? b : Buffer.from(b));
+  const nb = aligned(file("num.bin"), 8), sb = aligned(file("str.bin"), 4);
   const numAll = new Float64Array(nb.buffer, nb.byteOffset, nb.byteLength / 8);
   const strAll = new Int32Array(sb.buffer, sb.byteOffset, sb.byteLength / 4);
   const num: Table["num"] = {}, str: Table["str"] = {};
