@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SOURCE_LABEL, type Run, type RunDetail, type Strategy } from "@/lib/data";
 import { int, num, pct, scoreTone, tone } from "@/lib/format";
+import { CHECK_CLS, checkMark, checksOf, VERDICT_INFO, verdictOf } from "@/lib/columns";
 
 const PARTS: { k: keyof RunDetail["parts"]; label: string; weight: string; hint: string }[] = [
   { k: "consistency", label: "Consistency", weight: "20%", hint: "Share of the windows it was judged on (first 70%, last 30%, last 1000–4000 bars) that made money per trade" },
@@ -53,12 +54,26 @@ export default function ReportPanel({ run, raw, detail: rawDetail, loading, stra
             <span className="rounded border border-line px-1.5 py-0.5 text-ink-dim">{run.tf}</span>
             <span className={`num rounded px-1.5 py-0.5 font-semibold ${scoreTone(run.score)}`}>{run.score ?? "no score"}</span>
             <span className="rounded border border-line px-1.5 py-0.5 text-ink-dim">{SOURCE_LABEL[run.src]}</span>
-            {run.held && <span className="rounded bg-gain/15 px-1.5 py-0.5 text-gain">Held up</span>}
-            {run.repaint && <span className={`rounded bg-panel-2 px-1.5 py-0.5 ${VERDICT[run.repaint][1]}`}>{VERDICT[run.repaint][0]}</span>}
+            <span className={`rounded px-1.5 py-0.5 font-semibold ${VERDICT_INFO[verdictOf(run)].cls}`}>{VERDICT_INFO[verdictOf(run)].label}</span>
           </div>
         </div>
         <button onClick={onClose} className="rounded-md border border-line px-2 py-1 text-xs text-ink-dim hover:text-ink" aria-label="Close report">✕</button>
       </div>
+
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+          Verdict: <span className={VERDICT_INFO[verdictOf(run)].cls.split(" ")[1]}>{VERDICT_INFO[verdictOf(run)].label}</span>
+          <span className="normal-case tracking-normal"> · {VERDICT_INFO[verdictOf(run)].hint}</span>
+        </h3>
+        <ul className="grid gap-1 text-sm sm:grid-cols-2">
+          {checksOf(run).map((c) => (
+            <li key={c.label} title={c.hint} className="flex items-center gap-2">
+              <span aria-hidden="true" className={`num w-4 text-center font-bold ${CHECK_CLS[c.state]}`}>{checkMark(c.state)}</span>
+              <span className={c.state === "pass" ? "text-ink" : CHECK_CLS[c.state]}>{c.label}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line">
         <Tile label="Net %" value={pct(run.net, 1)} cls={tone(run.net)} sub={run.bh != null ? `Buy & hold ${pct(run.bh, 1)}` : undefined} />

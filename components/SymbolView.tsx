@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, TIMEFRAMES, view, type Fills, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
 import { int, num, pct, tone } from "@/lib/format";
-import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TagChips, TF_ORDER, type Filter } from "@/lib/columns";
+import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TF_ORDER, VerdictBadge, verdictOf, type Filter, type Verdict } from "@/lib/columns";
 import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
 import ReportPanel from "./ReportPanel";
 import SymbolAnalytics from "./SymbolAnalytics";
@@ -25,11 +25,20 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [onlyChecked, setOnlyChecked] = useStored<boolean>("atlas.onlyChecked", false);
   const [src, setSrc] = useStored<"" | "tv" | "ts">("atlas.source", "");
   const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
+  const [verdict, setVerdict] = useStored<"" | Verdict>("atlas.verdict", "");
   const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
   const [q, setQ] = useState("");
   // table settings, remembered in this browser
-  const [filters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
+  const [storedFilters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
+  const filters = useMemo(() => storedFilters.filter((f) => COLUMN[f.key]), [storedFilters]);   // drop fields that no longer exist
   const [visible, setVisible] = useStored<string[]>("atlas.columns", DEFAULT_COLUMNS);
+  // once: show the new Direction column to people whose column choice was saved before it existed
+  const [dirAdded, setDirAdded] = useStored<boolean>("atlas.dirAdded", false);
+  useEffect(() => {
+    if (dirAdded) return;
+    if (!visible.includes("dir")) { const i = visible.indexOf("tf"); setVisible([...visible.slice(0, i + 1), "dir", ...visible.slice(i + 1)]); }
+    setDirAdded(true);
+  }, [dirAdded, visible, setVisible, setDirAdded]);
   const [pageSize, setPageSize] = useStored<number>("atlas.pagesize", 30);
   const [sort, setSort] = useStored<string>("atlas.sort", "score");
   const [dir, setDir] = useStored<1 | -1>("atlas.dir", -1);
@@ -43,7 +52,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   }, [symbol]);
   // the report data is larger: fetch it once a row is opened
   useEffect(() => { if (selectedId && !details) loadDetails(symbol).then(setDetails); }, [selectedId, details, symbol]);
-  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, q, sort, dir, filters, pageSize, fills, onlyChecked]);
+  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, q, sort, dir, filters, pageSize, fills, onlyChecked, verdict]);
 
   const title = (r: Run) => strategies[r.sid]?.title ?? r.sid;
   const cols = useMemo(() => COLUMNS.filter((c) => c.fixed || visible.includes(c.key)), [visible]);
@@ -57,7 +66,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
     const s = q.trim().toLowerCase();
     const out = viewed.filter((r) =>
       (!onlyChecked || !!r.fills) &&
-      (!tf || r.tf === tf) && (!src || r.src === src) && (!heldOnly || r.held) &&
+      (!tf || r.tf === tf) && (!src || r.src === src) && (!heldOnly || r.held) && (!verdict || verdictOf(r) === verdict) &&
       (showRepaint || r.repaint !== "repaints") && !strategies[r.sid]?.dup_of &&
       (!s || title(r).toLowerCase().includes(s)) && matches(r, strategies, filters));
     const col = COLUMN[sort];
@@ -73,7 +82,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
       if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
       return av < bv ? -dir : av > bv ? dir : 0;
     });
-  }, [data, viewed, tf, src, heldOnly, showRepaint, q, sort, dir, strategies, filters, onlyChecked, fills]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, viewed, tf, src, heldOnly, showRepaint, q, sort, dir, strategies, filters, onlyChecked, fills, verdict]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function sortBy(k: string) {
     if (sort === k) setDir(dir === 1 ? -1 : 1);
@@ -135,7 +144,8 @@ export default function SymbolView({ symbol }: { symbol: string }) {
               <Pills value={tf} onChange={setTf} options={[["", "All TF"], ...TIMEFRAMES.map((t) => [t, t] as [string, string])]} />
               <FiltersButton filters={filters} onChange={setFilters} heldOnly={heldOnly} onHeldOnly={setHeldOnly}
                 showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")}
-                onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} realistic={realisticOn} onRealistic={setRealisticOn} />
+                onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} realistic={realisticOn} onRealistic={setRealisticOn}
+                verdict={verdict} onVerdict={(v) => setVerdict(v as "" | Verdict)} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
@@ -170,7 +180,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                           <div className="truncate">{title(r)}</div>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1">
                             <span className="text-[0.7rem] text-ink-faint">{SOURCE_LABEL[r.src]}</span>
-                            <TagChips r={r} />
+                            <VerdictBadge r={r} />
                           </div>
                         </td>
                       ) : (

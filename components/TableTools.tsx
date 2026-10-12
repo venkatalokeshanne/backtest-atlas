@@ -32,14 +32,14 @@ function Popover({ label, badge, children }: { label: React.ReactNode; badge?: n
 
 const selectCls = "rounded-md border border-line bg-ground px-2 py-1.5 text-sm outline-none focus:border-signal/60";
 
-export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic }: {
+export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict }: {
   filters: Filter[]; onChange: (f: Filter[]) => void;
   heldOnly: boolean; onHeldOnly: (v: boolean) => void; showRepaint: boolean; onShowRepaint: (v: boolean) => void;
   source: string; onSource: (v: string) => void; onlyChecked: boolean; onOnlyChecked: (v: boolean) => void;
-  realistic: boolean; onRealistic: (v: boolean) => void;
+  realistic: boolean; onRealistic: (v: boolean) => void; verdict: string; onVerdict: (v: string) => void;
 }) {
   const active = filters.filter((f) => f.value.trim() !== "").length + (heldOnly ? 1 : 0) + (showRepaint ? 1 : 0) + (source ? 1 : 0)
-    + (onlyChecked ? 1 : 0) + (realistic ? 1 : 0);
+    + (onlyChecked ? 1 : 0) + (realistic ? 1 : 0) + (verdict ? 1 : 0);
   const set = (i: number, patch: Partial<Filter>) => onChange(filters.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   return (
     <Popover badge={active} label={<><FunnelIcon /> Filters</>}>
@@ -55,6 +55,15 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
           <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-ground transition-all ${realistic ? "left-[1.1rem]" : "left-0.5"}`} />
         </span>
       </label>
+      <div className="mb-2.5 flex flex-wrap items-center gap-2 text-sm text-ink-dim">
+        <span className="w-[4.3rem] pl-1 text-ink-faint">Verdict</span>
+        <div className="flex overflow-hidden rounded-md border border-line">
+          {[["", "All"], ["solid", "Solid"], ["caution", "Caution"], ["avoid", "Avoid"]].map(([v, l]) => (
+            <button key={v || "all"} onClick={() => onVerdict(v)}
+              className={`px-2.5 py-1 text-sm ${verdict === v ? "bg-signal-soft text-signal" : "text-ink-dim hover:bg-panel-2 hover:text-ink"}`}>{l}</button>
+          ))}
+        </div>
+      </div>
       <div className="mb-2.5 flex flex-wrap items-center gap-2 text-sm text-ink-dim">
         <span className="w-[4.3rem] pl-1 text-ink-faint">Source</span>
         <div className="flex overflow-hidden rounded-md border border-line">
@@ -108,7 +117,7 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
       <div className="mt-3 flex items-center justify-between">
         <button onClick={() => onChange([...filters, { join: "and", key: "net", op: ">=", value: "" }])}
           className="text-sm text-signal hover:underline">+ Add filter</button>
-        <button onClick={() => { onChange(DEFAULT_FILTERS); onHeldOnly(false); onShowRepaint(false); onSource(""); onOnlyChecked(false); onRealistic(false); }} className="text-xs text-ink-faint hover:text-ink">Reset</button>
+        <button onClick={() => { onChange(DEFAULT_FILTERS); onHeldOnly(false); onShowRepaint(false); onSource(""); onOnlyChecked(false); onRealistic(false); onVerdict(""); }} className="text-xs text-ink-faint hover:text-ink">Reset</button>
       </div>
     </Popover>
   );

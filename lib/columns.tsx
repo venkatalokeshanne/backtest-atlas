@@ -16,48 +16,55 @@ export type Col = {
 
 const n = (v: number | null | undefined) => (v === undefined ? null : v);
 
-/** Labels shown under a strategy's name, beside its source. Order = importance. */
-export type Tag = { label: string; tone: "gain" | "loss" | "warn" | "signal" | "muted"; hint: string };
-export function tagsOf(r: Run): Tag[] {
-  const x = r as any, t: Tag[] = [];
-  if (r.held) t.push({ label: "Held up", tone: "gain", hint: "Made money per trade early and recently, and beat holding the stock" });
-  if (r.repaint === "repaints") t.push({ label: "Repaints", tone: "loss", hint: "Trades changed when re-run with closed bars only: the backtest used future data" });
-  else if (r.repaint === "vectors_present") t.push({ label: "Live differs", tone: "warn", hint: "History matched with closed bars, but parts of the script behave differently on the live bar" });
-  else if (r.repaint === "clean") t.push({ label: "No repaint", tone: "muted", hint: "Passed Foresight's replay check" });
-  if (r.fills === "survives") t.push({ label: "Survives fills", tone: "gain", hint: "Still profitable overall and over the last 6 months with realistic fills (exits from the next bar, stop before target, close-based trailing, spread)" });
-  else if (r.fills === "fails") t.push({ label: "Fails fills", tone: "loss", hint: "Loses money (overall or over the last 6 months) once fills are realistic: the TradingView-fill result was a fill artefact" });
-  else t.push({ label: "Not fill-checked", tone: "muted", hint: r.src === "ts" ? "TrendSpider results come from its own tester and have not been re-run with realistic fills" : "Realistic-fill re-run not done yet" });
-  if (r.luck === "unlikely") t.push({ label: "Unlikely luck", tone: "gain", hint: `Edge this size is unlikely to be chance even though ${r.tested ?? "many"} strategies were tried on this stock and timeframe` });
-  else if (r.luck === "likely") t.push({ label: "Could be luck", tone: "warn", hint: `With ${r.tested ?? "many"} strategies tried on this stock and timeframe, a result this size could come from chance alone` });
-  else if (r.luck === "possible") t.push({ label: "Possibly luck", tone: "muted", hint: "Some chance this result comes from luck, given how many strategies were tried" });
-  if ((r.win ?? 0) >= 85 || (r.pf ?? 0) >= 5)
-    t.push({ label: "Check fills", tone: "warn", hint: "Win rate ≥ 85% or profit factor ≥ 5: often the tester's optimistic fills inside a bar, not a real edge" });
-  if ((x.t1 ?? 0) > 0) t.push({ label: "Active", tone: "signal", hint: "Closed at least one trade in the last month" });
-  if (x.dir === "long") t.push({ label: "Long only", tone: "muted", hint: "Only buys" });
-  else if (x.dir === "short") t.push({ label: "Short only", tone: "muted", hint: "Only sells short" });
-  else if (x.dir === "both") t.push({ label: "Long & short", tone: "muted", hint: "Trades both directions" });
-  return t;
+/** One trust verdict per backtest, built from the checks below; the checks themselves show in the report panel. */
+export type Verdict = "solid" | "caution" | "avoid";
+export type Check = { label: string; state: "pass" | "warn" | "fail" | "unknown"; hint: string };
+export function checksOf(r: Run): Check[] {
+  const c: Check[] = [];
+  c.push(r.held ? { label: "Held up", state: "pass", hint: "Made money per trade early and recently, and beat holding the stock" }
+    : { label: "Did not hold up", state: "warn", hint: "Lost money per trade early or recently, or did not beat holding the stock" });
+  c.push(r.fills === "survives" ? { label: "Survives realistic fills", state: "pass", hint: "Still profitable overall and over the last 6 months with realistic fills (exits from the next bar, stop before target, close-based trailing, spread)" }
+    : r.fills === "fails" ? { label: "Fails realistic fills", state: "fail", hint: "Loses money (overall or over the last 6 months) once fills are realistic" }
+    : { label: "Not fill-checked", state: "unknown", hint: r.src === "ts" ? "TrendSpider results come from its own tester and cannot be re-run with realistic fills" : "No realistic-fill re-run for this backtest" });
+  c.push(r.repaint === "clean" ? { label: "No repaint", state: "pass", hint: "Same trades when re-run with closed bars only, and nothing that behaves differently live" }
+    : r.repaint === "repaints" ? { label: "Repaints", state: "fail", hint: "Trades changed when re-run with closed bars only: the backtest used future data" }
+    : r.repaint === "vectors_present" ? { label: "Live differs", state: "warn", hint: "History matched with closed bars, but parts of the script behave differently on the live bar" }
+    : { label: "Repaint not checked", state: "unknown", hint: r.src === "ts" ? "TrendSpider scripts are not replay-checked" : "This script could not be replay-checked with the data we hold" });
+  c.push(r.luck === "unlikely" ? { label: "Unlikely to be luck", state: "pass", hint: `Edge this size is unlikely to be chance even though ${r.tested ?? "many"} strategies were tried on this stock and timeframe` }
+    : r.luck === "likely" ? { label: "Could be luck", state: "warn", hint: `With ${r.tested ?? "many"} strategies tried on this stock and timeframe, a result this size could come from chance alone` }
+    : r.luck === "possible" ? { label: "Possibly luck", state: "warn", hint: "Some chance this result comes from luck, given how many strategies were tried" }
+    : { label: "Luck not tested", state: "unknown", hint: "Too few trades, or no realistic-fill re-run to test" });
+  c.push((r.win ?? 0) >= 85 || (r.pf ?? 0) >= 5
+    ? { label: "Too good to be true", state: "warn", hint: "Win rate ≥ 85% or profit factor ≥ 5: often the tester's optimistic fills inside a bar, not a real edge" }
+    : { label: "Normal win rate and profit factor", state: "pass", hint: "Win rate below 85% and profit factor below 5" });
+  return c;
 }
-const TAG_TONE: Record<Tag["tone"], string> = {
-  gain: "bg-gain/15 text-gain", loss: "bg-loss/15 text-loss", warn: "bg-warn/15 text-warn",
-  signal: "bg-signal/15 text-signal", muted: "bg-panel-2 text-ink-dim",
+export function verdictOf(r: Run): Verdict {
+  if (r.repaint === "repaints" || r.fills === "fails") return "avoid";
+  return checksOf(r).every((c) => c.state === "pass") ? "solid" : "caution";
+}
+export const VERDICT_INFO: Record<Verdict, { label: string; cls: string; hint: string }> = {
+  solid: { label: "Solid", cls: "bg-gain/15 text-gain", hint: "Held up, survives realistic fills, no repaint, unlikely to be luck, normal win rate and profit factor" },
+  caution: { label: "Caution", cls: "bg-warn/15 text-warn", hint: "No hard failure, but at least one check is weak or could not be run" },
+  avoid: { label: "Avoid", cls: "bg-loss/15 text-loss", hint: "Repaints, or loses money once fills are realistic" },
 };
-export function TagChips({ r }: { r: Run }) {
-  return (
-    <>
-      {tagsOf(r).map((t) => (
-        <span key={t.label} title={t.hint} className={`whitespace-nowrap rounded px-1.5 py-px text-[0.65rem] font-medium ${TAG_TONE[t.tone]}`}>{t.label}</span>
-      ))}
-    </>
-  );
+const MARK: Record<Check["state"], string> = { pass: "✓", warn: "!", fail: "✗", unknown: "?" };
+export const CHECK_CLS: Record<Check["state"], string> = { pass: "text-gain", warn: "text-warn", fail: "text-loss", unknown: "text-ink-faint" };
+export const checkMark = (st: Check["state"]) => MARK[st];
+export function VerdictBadge({ r }: { r: Run }) {
+  const v = VERDICT_INFO[verdictOf(r)];
+  const list = checksOf(r).map((c) => `${MARK[c.state]} ${c.label}`).join("\n");
+  return <span title={`${v.label}: ${v.hint}\n\n${list}`} className={`whitespace-nowrap rounded px-1.5 py-px text-[0.65rem] font-semibold ${v.cls}`}>{v.label}</span>;
 }
+const DIR: Record<string, string> = { long: "Long only", short: "Short only", both: "Long & short" };
 const signed = (v: number | null, d = 1) => <span className={tone(v)}>{pct(v, d)}</span>;
 
 export const COLUMNS: Col[] = [
   { key: "strategy", label: "Strategy", kind: "text", fixed: true, get: (r, s) => s[r.sid]?.title ?? r.sid },
-  { key: "tags", label: "Tags", kind: "text", get: (r) => tagsOf(r).map((t) => t.label).join(", "),
-    hint: "Shown under the strategy name; filter with e.g. Tags has Held up" },
+  { key: "verdict", label: "Verdict", kind: "text", get: (r) => VERDICT_INFO[verdictOf(r)].label,
+    hint: "Shown under the strategy name: Solid, Caution or Avoid. Open a row to see the checks behind it" },
   { key: "tf", label: "Timeframe", kind: "text", defaultOn: true, get: (r) => r.tf },
+  { key: "dir", label: "Direction", kind: "text", defaultOn: true, get: (r) => DIR[(r as any).dir] ?? "" },
   { key: "source", label: "Source", kind: "text", get: (r) => SOURCE_LABEL[r.src] },
   { key: "score", label: "Backtest Score", kind: "number", defaultOn: true, get: (r) => r.score,
     render: (r) => <span className={`num rounded px-1.5 py-0.5 text-xs font-semibold ${scoreTone(r.score)}`}>{r.score ?? "—"}</span>,
@@ -98,7 +105,7 @@ export const COLUMNS: Col[] = [
     hint: "Profitable per trade early and recently, and beat holding the stock" },
   { key: "from", label: "Data From", kind: "text", get: (r) => r.from ?? "" },
 ];
-// "tags" is a filter/CSV field; in the table the chips under the name already show them
+// "verdict" is a filter/CSV field; in the table the badge under the name already shows it
 export const COLUMN = Object.fromEntries(COLUMNS.map((c) => [c.key, c]));
 export const DEFAULT_COLUMNS = COLUMNS.filter((c) => c.defaultOn || c.fixed).map((c) => c.key);
 export const TF_ORDER = TIMEFRAMES as readonly string[];
