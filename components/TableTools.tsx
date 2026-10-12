@@ -6,7 +6,14 @@ import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, type Filter } from "
 /** Popover shell: opens under its button, closes on outside click or Escape. */
 function Popover({ label, badge, children }: { label: React.ReactNode; badge?: number; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  // open towards the side with room: from the button's left edge, or from its right edge near the screen's right side
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const toggle = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (r) setAlignRight(r.left + 480 > window.innerWidth - 16);
+    setOpen((o) => !o);
+  };
   useEffect(() => {
     if (!open) return;
     const click = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -16,13 +23,13 @@ function Popover({ label, badge, children }: { label: React.ReactNode; badge?: n
   }, [open]);
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
+      <button onClick={toggle} aria-expanded={open}
         className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm ${open ? "border-signal/50 bg-signal-soft text-signal" : "border-line text-ink-dim hover:text-ink"}`}>
         {label}
         {badge ? <span className="num rounded bg-signal/20 px-1.5 text-xs text-signal">{badge}</span> : null}
       </button>
       {open && (
-        <div className="fixed inset-x-3 top-24 z-40 rounded-xl border border-line bg-panel p-3 shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-1.5 sm:w-[30rem]">
+        <div className={`fixed inset-x-3 top-24 z-40 rounded-xl border border-line bg-panel p-3 shadow-2xl sm:absolute sm:inset-x-auto ${alignRight ? "sm:right-0" : "sm:left-0"} sm:top-full sm:mt-1.5 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)]`}>
           {children}
         </div>
       )}
