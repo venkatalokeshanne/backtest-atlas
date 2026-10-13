@@ -6,7 +6,7 @@ months and windows counted back from the data's last bar exactly as periods.py d
 
 Writes extras/<model>/<tf>/<T>.json {strategy: {...}} for every archived dataset (skips ones already up to date) and
 checks the 6-month net % against the stored recent figures. `python extras.py` (all) or `python extras.py NVDA ...`."""
-import array, gzip, json, sys
+import array, gzip, json, os, sys
 from datetime import date
 from pathlib import Path
 from periods import agg, months_back, shift_date
@@ -103,7 +103,8 @@ def build(model, tf, tk):
                                          for k in range(5, -1, -1)]}
         res[sid]["_net6"] = round(sum(r for xb, _, r in rows if dates[xb][:10] > shift_date(last, 6)), 3)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(res, separators=(",", ":")), encoding="utf-8")
+    tmp = dst.with_suffix(".tmp")
+    tmp.write_text(json.dumps(res, separators=(",", ":")), encoding="utf-8"); os.replace(tmp, dst)   # never half-written
     return res
 
 
