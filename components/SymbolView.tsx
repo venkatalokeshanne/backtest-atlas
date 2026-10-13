@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, tfOfId, TIMEFRAMES, view, type Fills, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
 import { int, num, pct, tone } from "@/lib/format";
 import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TF_ORDER, VerdictBadge, verdictOf, type Filter, type Verdict } from "@/lib/columns";
-import { ColumnsButton, FiltersButton, useColumns, useStored } from "./TableTools";
+import { ColumnsButton, FiltersButton, useColumns, usePresets, useStored, type TableSettings } from "./TableTools";
 import ReportPanel from "./ReportPanel";
 import SymbolAnalytics from "./SymbolAnalytics";
 
@@ -35,6 +35,12 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   const [pageSize, setPageSize] = useStored<number>("atlas.pagesize", 30);
   const [sort, setSort] = useStored<string>("atlas.sort", "score");
   const [dir, setDir] = useStored<1 | -1>("atlas.dir", -1);
+  const presets = usePresets(
+    { realistic: realisticOn, verdict, tf, filters, sort, dir, src, heldOnly, showRepaint, onlyChecked },
+    (s: TableSettings) => {
+      setRealisticOn(s.realistic); setVerdict(s.verdict as "" | Verdict); setTf(s.tf); setFilters(s.filters); setSort(s.sort); setDir(s.dir);
+      setSrc(s.src as "" | "tv" | "ts"); setHeldOnly(s.heldOnly); setShowRepaint(s.showRepaint); setOnlyChecked(s.onlyChecked);
+    });
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -144,8 +150,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
                 showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")}
                 onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} realistic={realisticOn} onRealistic={setRealisticOn}
                 verdict={verdict} onVerdict={(v) => setVerdict(v as "" | Verdict)}
-                onPreset={(p) => { setRealisticOn(p.realistic); setVerdict(p.verdict); setTf(p.tf); setFilters(p.filters);
-                  setSort(p.sort); setDir(p.dir); setSrc(""); setHeldOnly(false); setShowRepaint(false); setOnlyChecked(false); }} />
+                activePreset={presets.active} onPreset={presets.toggle} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />

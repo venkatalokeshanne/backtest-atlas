@@ -39,12 +39,13 @@ function Popover({ label, badge, children }: { label: React.ReactNode; badge?: n
 
 const selectCls = "rounded-md border border-line bg-ground px-2 py-1.5 text-sm outline-none focus:border-signal/60";
 
-export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict, onPreset }: {
+export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict, activePreset, onPreset }: {
   filters: Filter[]; onChange: (f: Filter[]) => void;
   heldOnly: boolean; onHeldOnly: (v: boolean) => void; showRepaint: boolean; onShowRepaint: (v: boolean) => void;
   source: string; onSource: (v: string) => void; onlyChecked: boolean; onOnlyChecked: (v: boolean) => void;
   realistic: boolean; onRealistic: (v: boolean) => void; verdict: string; onVerdict: (v: string) => void;
-  onPreset?: (p: Preset) => void;
+  /** the preset now in force ("" = none) and the switch */
+  activePreset?: string; onPreset?: (key: string) => void;
 }) {
   const active = filters.filter((f) => f.value.trim() !== "").length + (heldOnly ? 1 : 0) + (showRepaint ? 1 : 0) + (source ? 1 : 0)
     + (onlyChecked ? 1 : 0) + (realistic ? 1 : 0) + (verdict ? 1 : 0);
@@ -55,11 +56,19 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
       {onPreset && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="w-[4.3rem] pl-1 text-ink-faint">Presets</span>
-          {Object.entries(PRESETS).map(([k, p]) => (
-            <button key={k} onClick={() => onPreset(p)} title={p.hint}
-              className="rounded-md border border-signal/40 bg-signal-soft px-2.5 py-1 text-signal hover:border-signal">{p.label}</button>
-          ))}
-          <span className="text-xs text-ink-faint">sets the filters below; change anything after</span>
+          {Object.entries(PRESETS).map(([k, p]) => {
+            const on = activePreset === k;
+            return (
+              <button key={k} onClick={() => onPreset(k)} aria-pressed={on}
+                title={on ? "On: click to switch off and get your previous settings back" : p.hint}
+                className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium ${on
+                  ? "border-signal bg-signal text-ground" : "border-line text-ink-dim hover:border-signal/60 hover:text-ink"}`}>
+                <span aria-hidden="true" className={`grid h-3.5 w-3.5 place-items-center rounded-sm border text-[0.6rem] leading-none ${on ? "border-ground" : "border-ink-faint"}`}>{on ? "✓" : ""}</span>
+                {p.label}{on ? " · on" : ""}
+              </button>
+            );
+          })}
+          <span className="text-xs text-ink-faint">{activePreset ? "click again to switch off and restore your settings" : "sets the filters below; change anything after"}</span>
         </div>
       )}
       <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line-soft bg-ground px-3 py-2"
@@ -200,6 +209,33 @@ export function useColumns(initial: string[]): [string[], (v: string[]) => void]
   }, []);
   const set = (x: string[]) => { setV(x); try { localStorage.setItem("atlas.columns", JSON.stringify(x)); } catch {} };
   return [v, set];
+}
+
+/** The table settings a preset sets (and puts back when it is switched off). */
+export type TableSettings = {
+  realistic: boolean; verdict: string; tf: string; filters: Filter[]; sort: string; dir: 1 | -1;
+  src: string; heldOnly: boolean; showRepaint: boolean; onlyChecked: boolean;
+};
+const presetSettings = (p: Preset): TableSettings => ({
+  realistic: p.realistic, verdict: p.verdict, tf: p.tf, filters: p.filters, sort: p.sort, dir: p.dir,
+  src: "", heldOnly: false, showRepaint: false, onlyChecked: false,
+});
+const sameFilters = (a: Filter[], b: Filter[]) =>
+  JSON.stringify(a.filter((f) => f.value.trim() !== "")) === JSON.stringify(b.filter((f) => f.value.trim() !== ""));
+const sameSettings = (a: TableSettings, b: TableSettings) =>
+  a.realistic === b.realistic && a.verdict === b.verdict && a.tf === b.tf && sameFilters(a.filters, b.filters) && a.sort === b.sort &&
+  a.dir === b.dir && a.src === b.src && a.heldOnly === b.heldOnly && a.showRepaint === b.showRepaint && a.onlyChecked === b.onlyChecked;
+
+/** Presets as on/off switches: on = the table matches the preset exactly; switching on remembers the settings it
+ *  replaced, switching off puts them back. Changing anything afterwards simply leaves the preset off. */
+export function usePresets(current: TableSettings, apply: (s: TableSettings) => void) {
+  const [before, setBefore] = useStored<TableSettings | null>("atlas.presetBefore", null);
+  const active = Object.keys(PRESETS).find((k) => sameSettings(current, presetSettings(PRESETS[k]))) ?? "";
+  const toggle = (key: string) => {
+    if (active === key) { apply(before ?? { ...presetSettings(PRESETS[key]), realistic: false, verdict: "", tf: "", filters: DEFAULT_FILTERS }); setBefore(null); }
+    else { if (!active) setBefore(current); apply(presetSettings(PRESETS[key])); }
+  };
+  return { active, toggle };
 }
 
 export function useStored<T>(key: string, initial: T): [T, (v: T) => void] {
