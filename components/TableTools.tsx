@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, type Filter } from "@/lib/columns";
+import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, type Filter, PRESETS, type Preset } from "@/lib/columns";
 
 /** Popover shell: opens under its button, closes on outside click or Escape. */
 function Popover({ label, badge, children }: { label: React.ReactNode; badge?: number; children: React.ReactNode }) {
@@ -39,11 +39,12 @@ function Popover({ label, badge, children }: { label: React.ReactNode; badge?: n
 
 const selectCls = "rounded-md border border-line bg-ground px-2 py-1.5 text-sm outline-none focus:border-signal/60";
 
-export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict }: {
+export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict, onPreset }: {
   filters: Filter[]; onChange: (f: Filter[]) => void;
   heldOnly: boolean; onHeldOnly: (v: boolean) => void; showRepaint: boolean; onShowRepaint: (v: boolean) => void;
   source: string; onSource: (v: string) => void; onlyChecked: boolean; onOnlyChecked: (v: boolean) => void;
   realistic: boolean; onRealistic: (v: boolean) => void; verdict: string; onVerdict: (v: string) => void;
+  onPreset?: (p: Preset) => void;
 }) {
   const active = filters.filter((f) => f.value.trim() !== "").length + (heldOnly ? 1 : 0) + (showRepaint ? 1 : 0) + (source ? 1 : 0)
     + (onlyChecked ? 1 : 0) + (realistic ? 1 : 0) + (verdict ? 1 : 0);
@@ -51,6 +52,16 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
   return (
     <Popover badge={active} label={<><FunnelIcon /> Filters</>}>
       <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ink-faint">Filters</div>
+      {onPreset && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="w-[4.3rem] pl-1 text-ink-faint">Presets</span>
+          {Object.entries(PRESETS).map(([k, p]) => (
+            <button key={k} onClick={() => onPreset(p)} title={p.hint}
+              className="rounded-md border border-signal/40 bg-signal-soft px-2.5 py-1 text-signal hover:border-signal">{p.label}</button>
+          ))}
+          <span className="text-xs text-ink-faint">sets the filters below; change anything after</span>
+        </div>
+      )}
       <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line-soft bg-ground px-3 py-2"
         title="Off: numbers as TradingView's Strategy Tester shows them. On: the same backtests re-run with realistic fills (exits from the next bar, stop before target, trailing on closes, spread).">
         <span className="text-sm">

@@ -117,6 +117,24 @@ export const TF_ORDER = TIMEFRAMES as readonly string[];
 export type Filter = { join: "and" | "or"; key: string; op: ">=" | "<=" | "is" | "contains"; value: string };
 export const DEFAULT_FILTERS: Filter[] = [{ join: "and", key: "trades", op: ">=", value: "30" }];
 
+/** One-click starting points. Filter rows combine left to right, so the timeframe "or" comes first:
+ *  (5m or 15m) and trades >= 100 and last month, 3 and 6 months not negative. */
+export type Preset = { label: string; hint: string; realistic: boolean; verdict: "" | Verdict; tf: string; filters: Filter[]; sort: string; dir: 1 | -1 };
+export const PRESETS: Record<string, Preset> = {
+  day: {
+    label: "Day trading", realistic: true, verdict: "solid", tf: "", sort: "score", dir: -1,
+    hint: "5m or 15m, realistic fills, Solid verdict, at least 100 trades, last month / 3 / 6 months not negative, best score first",
+    filters: [
+      { join: "and", key: "tf", op: "is", value: "5m" },
+      { join: "or", key: "tf", op: "is", value: "15m" },
+      { join: "and", key: "trades", op: ">=", value: "100" },
+      { join: "and", key: "m1", op: ">=", value: "0" },
+      { join: "and", key: "m3", op: ">=", value: "0" },
+      { join: "and", key: "m6", op: ">=", value: "0" },
+    ],
+  },
+};
+
 export function matches(r: Run, s: Record<string, Strategy>, filters: Filter[]): boolean {
   let out: boolean | null = null;
   for (const f of filters) {

@@ -143,7 +143,9 @@ export default function SymbolView({ symbol }: { symbol: string }) {
               <FiltersButton filters={filters} onChange={setFilters} heldOnly={heldOnly} onHeldOnly={setHeldOnly}
                 showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")}
                 onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} realistic={realisticOn} onRealistic={setRealisticOn}
-                verdict={verdict} onVerdict={(v) => setVerdict(v as "" | Verdict)} />
+                verdict={verdict} onVerdict={(v) => setVerdict(v as "" | Verdict)}
+                onPreset={(p) => { setRealisticOn(p.realistic); setVerdict(p.verdict); setTf(p.tf); setFilters(p.filters);
+                  setSort(p.sort); setDir(p.dir); setSrc(""); setHeldOnly(false); setShowRepaint(false); setOnlyChecked(false); }} />
               <ColumnsButton visible={visible} onChange={setVisible} />
               <input id="strategy-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy"
                 className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
