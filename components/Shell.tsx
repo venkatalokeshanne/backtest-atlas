@@ -1,88 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { loadIndex, type SymbolIndex } from "@/lib/data";
 
-/** Sidebar + top bar with a symbol search, around every page. */
+/** Top bar around every page: Explorer on the left, the symbol search, All backtests on the right. */
 export default function Shell({ children }: { children: React.ReactNode }) {
   const [index, setIndex] = useState<SymbolIndex | null>(null);
-  const [open, setOpen] = useState(false);            // phone drawer
-  const [collapsed, setCollapsed] = useState(false);  // desktop sidebar, remembered in this browser
   useEffect(() => { loadIndex().then(setIndex).catch(() => {}); }, []);
-  useEffect(() => { try { setCollapsed(localStorage.getItem("atlas.sidebar") === "collapsed"); } catch {} }, []);
-  const toggleSidebar = () => {
-    // phones: open the drawer; desktop: collapse / expand the sidebar
-    if (window.matchMedia("(min-width: 1024px)").matches) {
-      setCollapsed((c) => { try { localStorage.setItem("atlas.sidebar", c ? "open" : "collapsed"); } catch {} return !c; });
-    } else setOpen(true);
-  };
   const path = usePathname();
-  const params = useSearchParams();
-  const activeList = path === "/symbols" ? params.get("list") ?? "" : null;
-
-  const nav = (
-    <nav className="flex flex-col gap-6 px-3 py-5 text-sm">
-      <Link href="/symbols" className="flex items-center gap-2.5 px-2" onClick={() => setOpen(false)}>
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-signal-soft text-signal">
-          <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" />
-          </svg>
-        </span>
-        <span className="font-semibold tracking-tight">Backtest Atlas</span>
-      </Link>
-      <div>
-        <div className="px-2 pb-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ink-faint">Discover</div>
-        <SideLink href="/backtests" active={path === "/backtests"} onClick={() => setOpen(false)}>All backtests</SideLink>
-        <SideLink href="/symbols" active={activeList === ""} onClick={() => setOpen(false)}>Explore by symbol</SideLink>
-        <div className="ml-3 mt-1 flex flex-col border-l border-line pl-2">
-          {(index?.lists ?? []).map((l) => (
-            <SideLink key={l} href={`/symbols?list=${encodeURIComponent(l)}`} active={activeList === l} onClick={() => setOpen(false)} small>
-              {l}
-            </SideLink>
-          ))}
-        </div>
-      </div>
-    </nav>
-  );
-
   return (
-    <div className="flex min-h-screen">
-      {!collapsed && (
-        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-panel lg:flex">{nav}</aside>
-      )}
-      {open && (
-        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)}>
-          <aside className="flex h-full w-64 flex-col overflow-y-auto border-r border-line bg-panel" onClick={(e) => e.stopPropagation()}>{nav}</aside>
-        </div>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-ground/90 px-4 py-2.5 backdrop-blur sm:px-6">
-          <button className="rounded-md border border-line p-1.5 text-ink-dim hover:text-ink" onClick={toggleSidebar}
-            aria-label={collapsed ? "Show sidebar" : "Hide sidebar"} title={collapsed ? "Show sidebar" : "Hide sidebar"}>
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
-            </svg>
-          </button>
-          {collapsed && (
-            <Link href="/symbols" className="hidden items-center gap-2 lg:flex" aria-label="Backtest Atlas home">
-              <span className="font-semibold tracking-tight">Backtest Atlas</span>
-            </Link>
-          )}
-          <SymbolSearch index={index} />
-        </header>
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">{children}</main>
-      </div>
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-ground/90 px-4 py-2.5 backdrop-blur sm:px-6">
+        <NavIcon href="/symbols" label="Explore by symbol" active={path === "/symbols" || path.startsWith("/symbols/")}>
+          <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" />
+        </NavIcon>
+        <div className="flex min-w-0 flex-1 justify-center"><SymbolSearch index={index} /></div>
+        <NavIcon href="/backtests" label="All backtests" active={path === "/backtests"}>
+          <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M3 14h18M9 9v11" />
+        </NavIcon>
+      </header>
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">{children}</main>
     </div>
   );
 }
 
-function SideLink({ href, active, children, small, onClick }: { href: string; active: boolean; children: React.ReactNode; small?: boolean; onClick?: () => void }) {
+function NavIcon({ href, label, active, children }: { href: string; label: string; active: boolean; children: React.ReactNode }) {
   return (
-    <Link href={href} onClick={onClick}
-      className={`block rounded-md px-2 ${small ? "py-1 text-[0.82rem]" : "py-1.5"} ${active ? "bg-signal-soft text-signal" : "text-ink-dim hover:bg-panel-2 hover:text-ink"}`}>
-      {children}
+    <Link href={href} aria-label={label} title={label} aria-current={active ? "page" : undefined}
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border ${active ? "border-signal/50 bg-signal-soft text-signal" : "border-line text-ink-dim hover:text-ink"}`}>
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">{children}</svg>
     </Link>
   );
 }
