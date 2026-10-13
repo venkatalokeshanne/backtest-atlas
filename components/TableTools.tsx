@@ -64,11 +64,10 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
                 className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium ${on
                   ? "border-signal bg-signal text-ground" : "border-line text-ink-dim hover:border-signal/60 hover:text-ink"}`}>
                 <span aria-hidden="true" className={`grid h-3.5 w-3.5 place-items-center rounded-sm border text-[0.6rem] leading-none ${on ? "border-ground" : "border-ink-faint"}`}>{on ? "✓" : ""}</span>
-                {p.label}{on ? " · on" : ""}
+                {p.label}
               </button>
             );
           })}
-          <span className="text-xs text-ink-faint">{activePreset ? "click again to switch off and restore your settings" : "sets the filters below; change anything after"}</span>
         </div>
       )}
       <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line-soft bg-ground px-3 py-2"
