@@ -35,7 +35,9 @@ TABLE_COLS = ["id", "src", "sid", "tf", "score", "held", "repaint", "breadth", "
               # realistic fills (Foresight strict broker model + price-scaled spread); None until re-run
               "fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
               "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3", "r_pf6",
-              "r_breadth", "acct", "acct_dd", "luck", "tested", "r_spark"]
+              "r_breadth", "acct", "acct_dd", "luck", "tested", "r_spark",
+              # average of the max drawdown under each of the last 6 calendar months (from the saved trades)
+              "add6", "r_add6"]
 PERIOD_TF = {"5m": "5m", "15m": "15m", "1h": "1H", "daily": "Daily"}
 
 
@@ -220,9 +222,15 @@ def extras(model, tk, tf):
         tfd = {v: k for k, v in PERIOD_TF.items()}[tf]
         f = SCREEN / "extras" / model / tfd / f"{tk}.json"
         _EXTRAS[key] = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
-        if len(_EXTRAS) > 48: _EXTRAS.pop(next(iter(_EXTRAS)))          # keep memory bounded: only recent files
+        if len(_EXTRAS) > 8: _EXTRAS.pop(next(iter(_EXTRAS)))           # rows come stock by stock: keep only recent files
     x = _EXTRAS[key]
     return x
+
+
+def avg_dd6(x):
+    """Average of the max drawdown under each of the last 6 calendar months (a month without trades counts as 0)."""
+    m = (x or {}).get("mdd")
+    return round(sum(m) / len(m), 2) if m else None
 
 
 def realistic(r, x, b, rep, tested):
@@ -337,7 +345,8 @@ def main():
     per_symbol = collections.defaultdict(list)
     strategies = {}
     # ---- TradingView runs
-    for r in prows:
+    # one stock and timeframe at a time, so each saved-trade figures file (extras) is read once
+    for r in sorted(prows, key=lambda r: (r["ticker"], r["timeframe"])):
         sid, tf, tk = r["strategy_id"], r["timeframe"], r["ticker"]
         s = pstrat.get(sid, {})
         rep = (s.get("repaint") or {}).get(tf, {}).get("verdict")
@@ -394,6 +403,8 @@ def main():
             }.items()},
             "curve": curves.get(f"{tk}|{key}"),
             "r_curve": r_curves.get(f"{tk}|{key}") if rf.get("fills") else None,
+            "add6": avg_dd6(extras("tv", tk, tf).get(sid)),
+            "r_add6": avg_dd6(extras("strict", tk, tf).get(sid)) if rf.get("fills") else None,
             "x": {k: v for k, v in extras("tv", tk, tf).get(sid, {}).items() if not k.startswith("_") and k != "recent"} or None,
             "r_x": ({k: v for k, v in extras("strict", tk, tf).get(sid, {}).items() if not k.startswith("_") and k != "recent"} or None) if rf.get("fills") else None,
             "r_spark": spark(r_curves.get(f"{tk}|{key}")) if rf.get("fills") else None,
@@ -423,7 +434,7 @@ def main():
             "m1": rnd(rec_d.get("net_perf_1mo")), "m3": rnd(rec_d.get("net_perf_3mo")), "m6": rnd(rec_d.get("net_perf_6mo")),
             "asof": (rec_d.get("timestamp") or "")[:10] or None,
             "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
-            "pf1": None, "pf3": None, "pf6": None, "spark": None, "r_spark": None, "r_curve": None, "x": None, "r_x": None,
+            "pf1": None, "pf3": None, "pf6": None, "spark": None, "r_spark": None, "r_curve": None, "x": None, "r_x": None, "add6": None, "r_add6": None,
             "dir": {"LONG": "long", "SHORT": "short"}.get((deep.get("direction") or "").upper(), "both" if deep.get("direction") else None),
             **{k: None for k in ("fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
                                  "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3",

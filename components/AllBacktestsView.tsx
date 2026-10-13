@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { loadDetails, loadIndex, loadStrategies, SOURCE_LABEL, TIMEFRAMES, type BacktestsPage, type Fills, type Run, type RunDetail, type Strategy } from "@/lib/data";
 import { int } from "@/lib/format";
 import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, VerdictBadge, type Col, type Filter, type Verdict } from "@/lib/columns";
-import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
+import { ColumnsButton, FiltersButton, useColumns, useStored } from "./TableTools";
 import ReportPanel from "./ReportPanel";
 import { Pills, Th } from "./SymbolView";
 
@@ -28,7 +28,7 @@ export default function AllBacktestsView() {
   const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
   const [storedFilters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
   const filters = useMemo(() => storedFilters.filter((f) => COLUMN[f.key]), [storedFilters]);
-  const [visible, setVisible] = useStored<string[]>("atlas.columns", DEFAULT_COLUMNS);
+  const [visible, setVisible] = useColumns(DEFAULT_COLUMNS);
   const [pageSize, setPageSize] = useStored<number>("atlas.pagesize", 30);
   const [sort, setSort] = useStored<string>("atlas.sort", "score");
   const [dir, setDir] = useStored<1 | -1>("atlas.dir", -1);

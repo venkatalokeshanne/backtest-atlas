@@ -167,6 +167,30 @@ function ColumnsIcon() {
 }
 
 /** Per-viewer memory for table settings; works without storage (private windows etc.). */
+/** Columns added after people had saved their own choice: shown to them once, when the saved choice is read. */
+const NEW_COLUMNS: [flag: string, col: string][] = [["atlas.dirAdded", "dir"], ["atlas.add6Added", "add6"]];
+
+/** The table's visible columns, remembered in this browser, with newly added columns switched on once. */
+export function useColumns(initial: string[]): [string[], (v: string[]) => void] {
+  const [v, setV] = useState<string[]>(initial);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("atlas.columns");
+      if (!s) { NEW_COLUMNS.forEach(([flag]) => localStorage.setItem(flag, "true")); return; }
+      let cols: string[] = JSON.parse(s);
+      for (const [flag, col] of NEW_COLUMNS) {
+        if (localStorage.getItem(flag)) continue;
+        if (!cols.includes(col)) cols = [...cols, col];
+        localStorage.setItem(flag, "true");
+      }
+      localStorage.setItem("atlas.columns", JSON.stringify(cols));
+      setV(cols);
+    } catch {}
+  }, []);
+  const set = (x: string[]) => { setV(x); try { localStorage.setItem("atlas.columns", JSON.stringify(x)); } catch {} };
+  return [v, set];
+}
+
 export function useStored<T>(key: string, initial: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(initial);
   useEffect(() => {

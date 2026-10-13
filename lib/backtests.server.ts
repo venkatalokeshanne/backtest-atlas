@@ -21,12 +21,12 @@ type Cursor = Run & { i: number; sym: string };
 const DATA = path.join(process.cwd(), "data", "all");
 const BOOL = new Set(["held", "r_held"]);
 const SWAP = ["score", "held", "net", "dd", "trades", "win", "pf", "avg", "edge", "m1", "m3", "m6",
-  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth", "spark"];
+  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth", "spark", "add6"];
 
 const tables = new Map<string, Table>();
 const NAN_ARR = new Float64Array(0);
 /** Columns whose sort value is just the stored number (the column's get() returns it unchanged, dd as its absolute value). */
-const DIRECT = new Set(["score", "net", "dd", "trades", "win", "pf", "avg", "edge", "bh", "m1", "m3", "m6", "t1", "t3", "t6",
+const DIRECT = new Set(["add6", "score", "net", "dd", "trades", "win", "pf", "avg", "edge", "bh", "m1", "m3", "m6", "t1", "t3", "t6",
   "w1", "w3", "w6", "pf1", "pf3", "pf6", "sharpe", "sortino", "bars_held", "tpm", "acct"]);
 const VERDICTS: Verdict[] = ["solid", "caution", "avoid"];
 /** Every row's verdict under the given fills, computed once per table. */

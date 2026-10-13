@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { loadDetails, loadStrategies, loadSymbol, SOURCE_LABEL, tfOfId, TIMEFRAMES, view, type Fills, type Run, type RunDetail, type Strategy, type SymbolData } from "@/lib/data";
 import { int, num, pct, tone } from "@/lib/format";
 import { COLUMN, COLUMNS, DEFAULT_COLUMNS, DEFAULT_FILTERS, matches, TF_ORDER, VerdictBadge, verdictOf, type Filter, type Verdict } from "@/lib/columns";
-import { ColumnsButton, FiltersButton, useStored } from "./TableTools";
+import { ColumnsButton, FiltersButton, useColumns, useStored } from "./TableTools";
 import ReportPanel from "./ReportPanel";
 import SymbolAnalytics from "./SymbolAnalytics";
 
@@ -31,14 +31,7 @@ export default function SymbolView({ symbol }: { symbol: string }) {
   // table settings, remembered in this browser
   const [storedFilters, setFilters] = useStored<Filter[]>("atlas.filters", DEFAULT_FILTERS);
   const filters = useMemo(() => storedFilters.filter((f) => COLUMN[f.key]), [storedFilters]);   // drop fields that no longer exist
-  const [visible, setVisible] = useStored<string[]>("atlas.columns", DEFAULT_COLUMNS);
-  // once: show the new Direction column to people whose column choice was saved before it existed
-  const [dirAdded, setDirAdded] = useStored<boolean>("atlas.dirAdded", false);
-  useEffect(() => {
-    if (dirAdded) return;
-    if (!visible.includes("dir")) { const i = visible.indexOf("tf"); setVisible([...visible.slice(0, i + 1), "dir", ...visible.slice(i + 1)]); }
-    setDirAdded(true);
-  }, [dirAdded, visible, setVisible, setDirAdded]);
+  const [visible, setVisible] = useColumns(DEFAULT_COLUMNS);
   const [pageSize, setPageSize] = useStored<number>("atlas.pagesize", 30);
   const [sort, setSort] = useStored<string>("atlas.sort", "score");
   const [dir, setDir] = useStored<1 | -1>("atlas.dir", -1);

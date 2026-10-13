@@ -27,12 +27,14 @@ export type Run = {
   r_w1?: number | null; r_w3?: number | null; r_w6?: number | null; r_pf1?: number | null; r_pf3?: number | null; r_pf6?: number | null;
   r_breadth?: [number, number] | null; acct?: number | null; acct_dd?: number | null;
   luck?: "unlikely" | "possible" | "likely" | null; tested?: number | null;
+  /** average of the max drawdown under each of the last 6 months (saved trades; null until archived) */
+  add6?: number | null; r_add6?: number | null;
   /** set by view(): which numbers this row is showing */
   mode?: "realistic" | "tv";
 };
 export type Fills = "realistic" | "tv";
 const SWAP = ["score", "held", "net", "dd", "trades", "win", "pf", "avg", "edge", "m1", "m3", "m6",
-  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth", "spark"] as const;
+  "t1", "t3", "t6", "w1", "w3", "w6", "pf1", "pf3", "pf6", "breadth", "spark", "add6"] as const;
 /** The row as shown: realistic-fill numbers when chosen and available, TradingView-fill numbers otherwise. */
 export function view(r: Run, fills: Fills): Run {
   if (fills === "tv" || !r.fills) return { ...r, mode: "tv" };
