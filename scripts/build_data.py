@@ -212,6 +212,19 @@ def ts_rows():
     return by, cls
 
 
+_EXTRAS = {}
+def extras(model, tk, tf):
+    """Figures from the saved trades (pine_screen/extras.py): drawdowns by period, worst drawdown, years, streaks."""
+    key = (model, tk, tf)
+    if key not in _EXTRAS:
+        tfd = {v: k for k, v in PERIOD_TF.items()}[tf]
+        f = SCREEN / "extras" / model / tfd / f"{tk}.json"
+        _EXTRAS[key] = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+        if len(_EXTRAS) > 48: _EXTRAS.pop(next(iter(_EXTRAS)))          # keep memory bounded: only recent files
+    x = _EXTRAS[key]
+    return x
+
+
 def realistic(r, x, b, rep, tested):
     """Score and headline figures under realistic fills, computed exactly like the TradingView-fill ones."""
     empty = {k: None for k in ("fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
@@ -336,12 +349,18 @@ def main():
         beat = (r.get("edge_trade") or 0) > 0
         key = f"tv:{sid}:{tf}"
         pr = periods.get((tk, tf, sid))
+        # recent figures from the saved, count-checked trades (extras.py) win over the earlier periods run where present
+        xr = extras("tv", tk, tf).get(sid, {}).get("recent")
+        if xr: pr = xr
         parts = {"consistency": cons, "breadth": b[0],
                  "edge": edge_part(r.get("profit_factor"), beat) * confidence(r.get("trades")),
                  "practicality": practicality(r.get("trades"), r.get("trade_max_dd")), "recent": recent_part(pr)}
         score, flagged = total_score(parts, r.get("win_rate"), r.get("profit_factor"))
         if rep == "repaints": score = None
-        rf = realistic(srows.get((tk, tf, sid)), strict.get((tk, tf, sid)), breadth.get(("rf", sid, tf), (0, 0, 0)),
+        sx = strict.get((tk, tf, sid))
+        xr = extras("strict", tk, tf).get(sid, {}).get("recent")
+        if sx is not None and xr: sx = {**sx, **xr}
+        rf = realistic(srows.get((tk, tf, sid)), sx, breadth.get(("rf", sid, tf), (0, 0, 0)),
                        rep, tested[(tk, tf)])
         per_symbol[tk].append({
             **rf,
@@ -375,6 +394,8 @@ def main():
             }.items()},
             "curve": curves.get(f"{tk}|{key}"),
             "r_curve": r_curves.get(f"{tk}|{key}") if rf.get("fills") else None,
+            "x": {k: v for k, v in extras("tv", tk, tf).get(sid, {}).items() if not k.startswith("_") and k != "recent"} or None,
+            "r_x": ({k: v for k, v in extras("strict", tk, tf).get(sid, {}).items() if not k.startswith("_") and k != "recent"} or None) if rf.get("fills") else None,
             "r_spark": spark(r_curves.get(f"{tk}|{key}")) if rf.get("fills") else None,
         })
         if sid not in strategies:
@@ -402,7 +423,7 @@ def main():
             "m1": rnd(rec_d.get("net_perf_1mo")), "m3": rnd(rec_d.get("net_perf_3mo")), "m6": rnd(rec_d.get("net_perf_6mo")),
             "asof": (rec_d.get("timestamp") or "")[:10] or None,
             "recent": None, "t1": None, "t3": None, "t6": None, "w1": None, "w3": None, "w6": None,
-            "pf1": None, "pf3": None, "pf6": None, "spark": None, "r_spark": None, "r_curve": None,
+            "pf1": None, "pf3": None, "pf6": None, "spark": None, "r_spark": None, "r_curve": None, "x": None, "r_x": None,
             "dir": {"LONG": "long", "SHORT": "short"}.get((deep.get("direction") or "").upper(), "both" if deep.get("direction") else None),
             **{k: None for k in ("fills", "r_score", "r_held", "r_net", "r_dd", "r_trades", "r_win", "r_pf", "r_avg", "r_edge",
                                  "r_m1", "r_m3", "r_m6", "r_t1", "r_t3", "r_t6", "r_w1", "r_w3", "r_w6", "r_pf1", "r_pf3",

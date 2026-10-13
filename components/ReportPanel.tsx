@@ -34,7 +34,7 @@ export default function ReportPanel({ run, raw, detail: rawDetail, loading, stra
   const real = run?.mode === "realistic";
   const detail: RunDetail | null = rawDetail && real
     ? { ...rawDetail, parts: rawDetail.r_parts ?? rawDetail.parts, recent: rawDetail.r_recent ?? null,
-        fills_flag: !!rawDetail.r_fills_flag, curve: rawDetail.r_curve ?? null }
+        fills_flag: !!rawDetail.r_fills_flag, curve: rawDetail.r_curve ?? null, x: rawDetail.r_x ?? null }
     : rawDetail;
   if (!run) {
     return (
@@ -141,6 +141,8 @@ export default function ReportPanel({ run, raw, detail: rawDetail, loading, stra
       </section>
 
       <Recent run={run} detail={detail} />
+      <Drawdowns run={run} detail={detail} />
+      <Years run={run} detail={detail} />
 
       {detail && Object.keys(detail.windows).length > 0 && (
         <section>
@@ -311,6 +313,7 @@ function Recent({ run, detail }: { run: Run; detail: RunDetail | null }) {
     ? [["Last month", r.p1m], ["Last 3 months", r.p3m], ["Last 6 months", r.p6m]]
     : [["Last month", { net: run.m1 }], ["Last 3 months", { net: run.m3 }], ["Last 6 months", { net: run.m6 }]];
   const months = r?.months ?? [];
+  const x = detail?.x ?? null;
   const max = Math.max(1, ...months.map((m) => Math.abs(m.net ?? 0)));
   return (
     <section>
@@ -322,16 +325,18 @@ function Recent({ run, detail }: { run: Run; detail: RunDetail | null }) {
           <thead className="bg-panel text-[0.68rem] uppercase tracking-wider text-ink-faint">
             <tr><th className="px-2.5 py-2 text-left">Period</th><th className="px-2.5 py-2 text-right">Trades</th>
               <th className="px-2.5 py-2 text-right">Net %</th><th className="px-2.5 py-2 text-right">Win %</th>
-              <th className="px-2.5 py-2 text-right">PF</th></tr>
+              <th className="px-2.5 py-2 text-right">PF</th>
+              <th className="px-2.5 py-2 text-right" title="Largest fall of the running trade sum inside the period">Max DD</th></tr>
           </thead>
           <tbody>
-            {rows.map(([k, p]) => (
+            {rows.map(([k, p], i) => (
               <tr key={k} className="border-t border-line-soft">
                 <td className="px-2.5 py-1.5 text-ink-dim">{k}</td>
                 <td className="num px-2.5 py-1.5 text-right">{p.n == null ? "—" : int(p.n)}</td>
                 <td className={`num px-2.5 py-1.5 text-right ${tone(p.net ?? null)}`}>{p.n === 0 ? "0.0%" : pct(p.net ?? null, 1)}</td>
                 <td className="num px-2.5 py-1.5 text-right">{num(p.win ?? null, 1)}</td>
                 <td className="num px-2.5 py-1.5 text-right">{num(p.pf ?? null)}</td>
+                <td className="num px-2.5 py-1.5 text-right text-loss">{x ? num([x.dd1, x.dd3, x.dd6][i], 1) : "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -361,10 +366,11 @@ function Recent({ run, detail }: { run: Run; detail: RunDetail | null }) {
                 <span className="text-[0.68rem] text-ink-faint">{monthLabel(m.m)}{i === months.length - 1 ? "*" : ""}</span>
                 <span className={`num text-xs ${tone(m.net ?? null)}`}>{m.n ? pct(m.net ?? 0, 1) : "—"}</span>
                 <span className="num text-[0.65rem] text-ink-faint">{int(m.n)} tr</span>
+                {x && <span className="num text-[0.65rem] text-loss" title="Largest fall inside the month">DD {num(x.mdd[i] ?? null, 1)}</span>}
               </div>
             ))}
           </div>
-          <p className="mt-1.5 text-[0.7rem] text-ink-faint">Closed trades only, counted in the month they closed (a trade held for months lands entirely in its exit month). Sum of per-trade net %. *Month to date.</p>
+          <p className="mt-1.5 text-[0.7rem] text-ink-faint">Closed trades only, counted in the month they closed (a trade held for months lands entirely in its exit month). Sum of per-trade net %; DD = largest fall of that sum inside the month. *Month to date.</p>
         </div>
       ) : (
         run.src === "ts" && <p className="mt-2 text-xs text-ink-faint">TrendSpider's own figures as of its run on {run.asof}; it reports no month-by-month breakdown.</p>
@@ -399,5 +405,79 @@ function Curve({ c }: { c: NonNullable<RunDetail["curve"]> }) {
         </LineChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+const day = (d: string) => { const [y, m, dd] = d.split("-"); return `${Number(dd)} ${MONTH[Number(m) - 1]} ${y.slice(2)}`; };
+
+/** Worst drawdown with its dates and recovery, where the strategy stands now, and its longest streaks. */
+function Drawdowns({ run, detail }: { run: Run; detail: RunDetail | null }) {
+  if (run.src === "ts") return null;
+  const x = detail?.x;
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Drawdowns and streaks</h3>
+      {!x ? (
+        <p className="rounded-lg border border-dashed border-line p-3 text-sm text-ink-faint">
+          Appears once this stock&apos;s trades are archived (the archive run is going through every stock).
+        </p>
+      ) : (
+        <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+          <dt className="text-ink-faint">Worst drawdown</dt>
+          <dd>
+            {x.worst ? (
+              <>
+                <span className="num font-semibold text-loss">{num(x.worst.dd, 1)}</span>
+                <span className="text-ink-dim"> · {day(x.worst.peak)} → {day(x.worst.trough)} ({int(x.worst.n)} trades, {int(x.worst.days)} days)</span>
+                <span className={`block text-xs ${x.worst.rec ? "text-gain" : "text-warn"}`}>
+                  {x.worst.rec ? `Recovered ${day(x.worst.rec)}, ${int(x.worst.rdays)} days after the low` : "Not recovered yet"}
+                </span>
+              </>
+            ) : <span className="text-ink-dim">None: the trade sum never fell</span>}
+          </dd>
+          <dt className="text-ink-faint">Now</dt>
+          <dd className="text-ink-dim">
+            {x.cur.dd > 0
+              ? <><span className="num text-loss">{num(x.cur.dd, 1)}</span> below its best (best reached {day(x.cur.since)})</>
+              : "At its best"}
+          </dd>
+          <dt className="text-ink-faint">Longest streaks</dt>
+          <dd className="text-ink-dim"><span className="num text-loss">{int(x.streak.loss)}</span> losing trades in a row ·{" "}
+            <span className="num text-gain">{int(x.streak.win)}</span> winning</dd>
+        </dl>
+      )}
+    </section>
+  );
+}
+
+/** Calendar years, newest first: trades closed in the year, their net %, largest fall inside the year, win rate. */
+function Years({ run, detail }: { run: Run; detail: RunDetail | null }) {
+  const ys = detail?.x?.years;
+  if (run.src === "ts" || !ys?.length) return null;
+  const now = run.asof?.slice(0, 4);
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Year by year</h3>
+      <div className="max-h-72 overflow-auto rounded-lg border border-line">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-panel text-[0.68rem] uppercase tracking-wider text-ink-faint">
+            <tr><th className="px-2.5 py-2 text-left">Year</th><th className="px-2.5 py-2 text-right">Trades</th>
+              <th className="px-2.5 py-2 text-right">Net %</th><th className="px-2.5 py-2 text-right">Max DD</th>
+              <th className="px-2.5 py-2 text-right">Win %</th></tr>
+          </thead>
+          <tbody>
+            {[...ys].reverse().map(([y, n, net, dd, win]) => (
+              <tr key={y} className="border-t border-line-soft">
+                <td className="num px-2.5 py-1.5 text-ink-dim">{y}{y === now ? " (to date)" : ""}</td>
+                <td className="num px-2.5 py-1.5 text-right">{int(n)}</td>
+                <td className={`num px-2.5 py-1.5 text-right ${tone(net)}`}>{pct(net, 1)}</td>
+                <td className="num px-2.5 py-1.5 text-right text-loss">{num(dd, 1)}</td>
+                <td className="num px-2.5 py-1.5 text-right">{num(win, 1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

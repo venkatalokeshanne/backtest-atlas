@@ -40,6 +40,15 @@ export function view(r: Run, fills: Fills): Run {
   for (const k of SWAP) o[k] = (r as any)[`r_${k}`];
   return o as Run;
 }
+/** From every saved trade: drawdowns for the trailing 1/3/6 months and each of the last 6 months (oldest first, as
+ *  `recent.months`), the worst drawdown with its dates, where it stands now, year by year, longest streaks. */
+export type Extras = {
+  dd1: number; dd3: number; dd6: number; mdd: number[];
+  worst: { dd: number; peak: string; trough: string; rec: string | null; n: number; days: number; rdays: number | null } | null;
+  cur: { dd: number; since: string };
+  years: [string, number, number, number, number][];   // year, trades, net %, max drawdown, win %
+  streak: { win: number; loss: number };
+};
 export type PeriodStat = { n: number; net?: number; win?: number; pf?: number | null };
 export type Window = { n?: number; avg?: number; pf?: number; win?: number; net?: number; dd?: number; edge?: number; bh?: number; from?: string };
 export type RunDetail = {
@@ -51,6 +60,8 @@ export type RunDetail = {
   sharpe: number | null; sortino: number | null; tpm: number | null; to: string | null; bars: number | null;
   windows: Record<string, Window>;
   curve: { t: string[]; s: number[]; b: number[]; start: string } | null;
+  /** figures from the saved trade list (TradingView fills / realistic fills), once the stock's trades are archived */
+  x?: Extras | null; r_x?: Extras | null;
   /** the same backtest's curve with realistic fills, when stored */
   r_curve?: { t: string[]; s: number[]; b: number[]; start: string } | null;
   recent: { p1m: PeriodStat; p3m: PeriodStat; p6m: PeriodStat; months: (PeriodStat & { m: string })[] } | null;
