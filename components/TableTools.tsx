@@ -53,23 +53,19 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
   return (
     <Popover badge={active} label={<><FunnelIcon /> Filters</>}>
       <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-ink-faint">Filters</div>
-      {onPreset && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="w-[4.3rem] pl-1 text-ink-faint">Presets</span>
-          {Object.entries(PRESETS).map(([k, p]) => {
-            const on = activePreset === k;
-            return (
-              <button key={k} onClick={() => onPreset(k)} aria-pressed={on}
-                title={on ? "On: click to switch off and get your previous settings back" : p.hint}
-                className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium ${on
-                  ? "border-signal bg-signal text-ground" : "border-line text-ink-dim hover:border-signal/60 hover:text-ink"}`}>
-                <span aria-hidden="true" className={`grid h-3.5 w-3.5 place-items-center rounded-sm border text-[0.6rem] leading-none ${on ? "border-ground" : "border-ink-faint"}`}>{on ? "✓" : ""}</span>
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {onPreset && Object.entries(PRESETS).map(([k, p]) => {
+        const on = activePreset === k;
+        return (
+          <label key={k} className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line-soft bg-ground px-3 py-2"
+            title={p.hint}>
+            <span className="text-sm text-ink">{p.label}</span>
+            <input id={`preset-${k}`} type="checkbox" role="switch" checked={on} onChange={() => onPreset(k)} className="sr-only" />
+            <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-signal" : "bg-panel-2 ring-1 ring-line"}`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-ground transition-all ${on ? "left-[1.1rem]" : "left-0.5"}`} />
+            </span>
+          </label>
+        );
+      })}
       <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line-soft bg-ground px-3 py-2"
         title="Off: numbers as TradingView's Strategy Tester shows them. On: the same backtests re-run with realistic fills (exits from the next bar, stop before target, trailing on closes, spread).">
         <span className="text-sm">
