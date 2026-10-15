@@ -39,16 +39,18 @@ function Popover({ label, badge, children }: { label: React.ReactNode; badge?: n
 
 const selectCls = "rounded-md border border-line bg-ground px-2 py-1.5 text-sm outline-none focus:border-signal/60";
 
-export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict, activePreset, onPreset }: {
+export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRepaint, onShowRepaint, source, onSource, onlyChecked, onOnlyChecked, realistic, onRealistic, verdict, onVerdict, activePreset, onPreset, watchlist, watchlists, onWatchlist }: {
   filters: Filter[]; onChange: (f: Filter[]) => void;
   heldOnly: boolean; onHeldOnly: (v: boolean) => void; showRepaint: boolean; onShowRepaint: (v: boolean) => void;
   source: string; onSource: (v: string) => void; onlyChecked: boolean; onOnlyChecked: (v: boolean) => void;
   realistic: boolean; onRealistic: (v: boolean) => void; verdict: string; onVerdict: (v: string) => void;
   /** the preset now in force ("" = none) and the switch */
   activePreset?: string; onPreset?: (key: string) => void;
+  /** All backtests page only: the chosen watchlist ("" = every stock), the lists, and the setter */
+  watchlist?: string; watchlists?: string[]; onWatchlist?: (v: string) => void;
 }) {
   const active = filters.filter((f) => f.value.trim() !== "").length + (heldOnly ? 1 : 0) + (showRepaint ? 1 : 0) + (source ? 1 : 0)
-    + (onlyChecked ? 1 : 0) + (realistic ? 1 : 0) + (verdict ? 1 : 0);
+    + (onlyChecked ? 1 : 0) + (realistic ? 1 : 0) + (verdict ? 1 : 0) + (watchlist ? 1 : 0);
   const set = (i: number, patch: Partial<Filter>) => onChange(filters.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   return (
     <Popover badge={active} label={<><FunnelIcon /> Filters</>}>
@@ -95,6 +97,19 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
           ))}
         </div>
       </div>
+      {onWatchlist && watchlists && watchlists.length > 0 && (
+        <div className="mb-2.5 flex flex-wrap items-start gap-2 text-sm text-ink-dim">
+          <span className="w-[4.3rem] pt-1 pl-1 text-ink-faint">Watchlist</span>
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+            {["", ...watchlists].map((l) => (
+              <button key={l || "all"} onClick={() => onWatchlist(l)}
+                className={`rounded-md border px-2.5 py-1 text-sm ${watchlist === l ? "border-signal/50 bg-signal-soft text-signal" : "border-line text-ink-dim hover:bg-panel-2 hover:text-ink"}`}>
+                {l || "All"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1.5 border-b border-line-soft pb-3 text-sm text-ink-dim">
         <label className="flex items-center gap-2" title="Profitable per trade early and recently, and beat holding the stock">
           <input id="held-only" type="checkbox" checked={heldOnly} onChange={(e) => onHeldOnly(e.target.checked)} className="accent-[var(--color-signal)]" />
@@ -139,7 +154,7 @@ export function FiltersButton({ filters, onChange, heldOnly, onHeldOnly, showRep
       <div className="mt-3 flex items-center justify-between">
         <button onClick={() => onChange([...filters, { join: "and", key: "net", op: ">=", value: "" }])}
           className="text-sm text-signal hover:underline">+ Add filter</button>
-        <button onClick={() => { onChange(DEFAULT_FILTERS); onHeldOnly(false); onShowRepaint(false); onSource(""); onOnlyChecked(false); onRealistic(false); onVerdict(""); }} className="text-xs text-ink-faint hover:text-ink">Reset</button>
+        <button onClick={() => { onChange(DEFAULT_FILTERS); onHeldOnly(false); onShowRepaint(false); onSource(""); onOnlyChecked(false); onRealistic(false); onVerdict(""); onWatchlist?.(""); }} className="text-xs text-ink-faint hover:text-ink">Reset</button>
       </div>
     </Popover>
   );

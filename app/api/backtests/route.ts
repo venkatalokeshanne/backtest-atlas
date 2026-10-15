@@ -1,7 +1,7 @@
-// GET /api/backtests?tf=&src=&held=1&rep=1&checked=1&verdict=&fills=realistic&q=&sort=score&dir=-1&filters=[...]&page=1&size=30
+// GET /api/backtests?tf=&src=&list=&held=1&rep=1&checked=1&verdict=&fills=realistic&q=&sort=score&dir=-1&filters=[...]&page=1&size=30
 // One page of the All backtests table (filtered and sorted on the server). &format=csv returns up to CSV_LIMIT rows.
 import { NextResponse } from "next/server";
-import { allRows, page, strategiesForCsv, type Query } from "@/lib/backtests.server";
+import { allRows, page, strategiesForCsv, watchlists, type Query } from "@/lib/backtests.server";
 import { COLUMNS, type Filter } from "@/lib/columns";
 import { TIMEFRAMES } from "@/lib/data";
 
@@ -16,6 +16,7 @@ function query(sp: URLSearchParams): Query {
   return {
     tf: (TIMEFRAMES as readonly string[]).includes(tf) ? tf : "",
     src: ["tv", "ts"].includes(sp.get("src") ?? "") ? sp.get("src")! : "",
+    list: (sp.get("list") ?? "") in watchlists() ? sp.get("list")! : "",
     heldOnly: sp.get("held") === "1", showRepaint: sp.get("rep") === "1", onlyChecked: sp.get("checked") === "1",
     verdict: ["solid", "caution", "avoid"].includes(sp.get("verdict") ?? "") ? sp.get("verdict")! : "",
     fills: sp.get("fills") === "realistic" ? "realistic" : "tv",

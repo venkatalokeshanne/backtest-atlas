@@ -116,8 +116,26 @@ function strategies(): Record<string, Strategy> {
 
 export const strategiesForCsv = strategies;
 
+// watchlists (public/data/symbols.json): name -> its stocks, and per table a 0/1 flag per stock code
+let listsCache: Record<string, Set<string>> | null = null;
+export function watchlists(): Record<string, Set<string>> {
+  if (!listsCache) {
+    const d = JSON.parse(fs.readFileSync(path.join(process.cwd(), "public", "data", "symbols.json"), "utf-8"));
+    listsCache = Object.fromEntries((d.lists as string[]).map((l) => [l, new Set<string>()]));
+    for (const s of d.symbols as { symbol: string; lists: string[] }[]) for (const l of s.lists) listsCache![l]?.add(s.symbol);
+  }
+  return listsCache!;
+}
+const listFlags = new Map<string, Uint8Array>();
+function inList(t: Table, list: string): Uint8Array {
+  const key = `${t.tf}|${list}`;
+  let f = listFlags.get(key);
+  if (!f) { const members = watchlists()[list] ?? new Set(); f = Uint8Array.from(t.str.sym.dict.map((s) => (members.has(s) ? 1 : 0))); listFlags.set(key, f); }
+  return f;
+}
+
 export type Query = {
-  tf: string; src: string; heldOnly: boolean; showRepaint: boolean; onlyChecked: boolean; verdict: string;
+  tf: string; src: string; list: string; heldOnly: boolean; showRepaint: boolean; onlyChecked: boolean; verdict: string;
   fills: Fills; q: string; sort: string; dir: 1 | -1; filters: Filter[];
 };
 type Hit = { t: number; i: number };
@@ -148,10 +166,12 @@ function run(q: Query): Result {
     const srcWant = q.src ? t.str.src.dict.indexOf(q.src) : -2, repCode = t.str.repaint.dict.indexOf("repaints");
     const held = t.num[realistic ? "r_held" : "held"], heldTv = t.num.held;
     const vWant = q.verdict ? VERDICTS.indexOf(q.verdict as Verdict) : -1, vArr = q.verdict ? verdicts(t, q.fills) : null;
+    const symC = t.str.sym.codes, listOk = q.list ? inList(t, q.list) : null;
     for (let i = 0; i < t.n; i++) {
       const checked = fillsC[i] >= 0;
       if (q.onlyChecked && !checked) continue;
       if (srcWant !== -2 && srcC[i] !== srcWant) continue;
+      if (listOk && !listOk[symC[i]]) continue;
       if (q.heldOnly && ((realistic && checked ? held[i] : heldTv[i]) !== 1)) continue;
       if (!q.showRepaint && repC[i] === repCode) continue;
       if (t.dup[i]) continue;

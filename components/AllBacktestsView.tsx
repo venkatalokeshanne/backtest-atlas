@@ -23,6 +23,8 @@ export default function AllBacktestsView() {
   const fills: Fills = realisticOn ? "realistic" : "tv";
   const [onlyChecked, setOnlyChecked] = useStored<boolean>("atlas.onlyChecked", false);
   const [src, setSrc] = useStored<"" | "tv" | "ts">("atlas.source", "");
+  const [watchlist, setWatchlist] = useStored<string>("atlas.watchlist", "");
+  const [lists, setLists] = useState<string[]>([]);
   const [heldOnly, setHeldOnly] = useStored<boolean>("atlas.heldOnly", false);
   const [verdict, setVerdict] = useStored<"" | Verdict>("atlas.verdict", "");
   const [showRepaint, setShowRepaint] = useStored<boolean>("atlas.showRepaint", false);
@@ -49,20 +51,21 @@ export default function AllBacktestsView() {
 
   useEffect(() => {
     loadStrategies().then(setStrategies);
-    loadIndex().then((ix) => setNames(Object.fromEntries(ix.symbols.map((s) => [s.symbol, s.name]))));
+    loadIndex().then((ix) => { setNames(Object.fromEntries(ix.symbols.map((s) => [s.symbol, s.name]))); setLists(ix.lists); });
   }, []);
   useEffect(() => { const t = setTimeout(() => setQDebounced(q), 250); return () => clearTimeout(t); }, [q]);
-  useEffect(() => setPage(1), [tf, src, heldOnly, showRepaint, qDebounced, sort, dir, filters, pageSize, fills, onlyChecked, verdict]);
+  useEffect(() => setPage(1), [tf, src, watchlist, heldOnly, showRepaint, qDebounced, sort, dir, filters, pageSize, fills, onlyChecked, verdict]);
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ tf, src, verdict, fills, q: qDebounced, sort, dir: String(dir) });
+    if (watchlist) p.set("list", watchlist);
     if (heldOnly) p.set("held", "1");
     if (showRepaint) p.set("rep", "1");
     if (onlyChecked) p.set("checked", "1");
     const active = filters.filter((f) => f.value.trim() !== "");
     if (active.length) p.set("filters", JSON.stringify(active));
     return p;
-  }, [tf, src, verdict, fills, qDebounced, sort, dir, heldOnly, showRepaint, onlyChecked, filters]);
+  }, [tf, src, watchlist, verdict, fills, qDebounced, sort, dir, heldOnly, showRepaint, onlyChecked, filters]);
 
   // one request per change; a newer request cancels the older one, and the old rows stay on screen until it answers
   const ctrl = useRef<AbortController | null>(null);
@@ -118,7 +121,8 @@ export default function AllBacktestsView() {
               showRepaint={showRepaint} onShowRepaint={setShowRepaint} source={src} onSource={(v) => setSrc(v as "" | "tv" | "ts")}
               onlyChecked={onlyChecked} onOnlyChecked={setOnlyChecked} realistic={realisticOn} onRealistic={setRealisticOn}
               verdict={verdict} onVerdict={(v) => setVerdict(v as "" | Verdict)}
-                activePreset={presets.active} onPreset={presets.toggle} />
+                activePreset={presets.active} onPreset={presets.toggle}
+              watchlist={lists.includes(watchlist) ? watchlist : ""} watchlists={lists} onWatchlist={setWatchlist} />
             <ColumnsButton visible={visible} onChange={setVisible} />
             <input id="all-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a strategy or stock"
               className="min-w-0 flex-1 rounded-md border border-line bg-ground px-2.5 py-1 text-base sm:text-sm outline-none focus:border-signal/60" />
