@@ -524,6 +524,9 @@ def main():
     sizes = [p.stat().st_size for p in (OUT / "symbol").glob("*.json") if not p.name.endswith(".detail.json")]
     print(f"{len(index)} symbols, {sum(len(v) for v in per_symbol.values())} backtests, {len(strategies)} strategies; "
           f"symbol files {min(sizes)/1e6:.2f}-{max(sizes)/1e6:.2f} MB, total {sum(sizes)/1e6:.0f} MB; {time.time()-t0:.0f}s")
+    # the Top strategies page: every strategy combined across the stocks of each watchlist (scripts/build_top.py)
+    import build_top
+    build_top.main()
 
 
 if __name__ == "__main__":

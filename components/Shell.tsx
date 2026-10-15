@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { loadIndex, type SymbolIndex } from "@/lib/data";
 
-/** Top bar around every page: Explorer on the left, the symbol search, All backtests on the right. */
+/** Top bar around every page: Explorer on the left, the symbol search, Top strategies and All backtests on the right. */
 export default function Shell({ children }: { children: React.ReactNode }) {
   const [index, setIndex] = useState<SymbolIndex | null>(null);
   useEffect(() => { loadIndex().then(setIndex).catch(() => {}); }, []);
@@ -17,6 +17,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" />
         </NavIcon>
         <div className="flex min-w-0 flex-1 justify-center"><SymbolSearch index={index} /></div>
+        <NavIcon href="/top" label="Top strategies" active={path === "/top"}>
+          <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" />
+        </NavIcon>
         <NavIcon href="/backtests" label="All backtests" active={path === "/backtests"}>
           <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M3 14h18M9 9v11" />
         </NavIcon>
