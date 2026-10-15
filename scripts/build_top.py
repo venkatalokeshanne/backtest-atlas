@@ -78,7 +78,7 @@ def main():
                 g = lambda k: c[f"r_{k}"][i] if fl == "realistic" and checked and k in SWAP and f"r_{k}" in c else c[k][i]
                 row = {"sym": c["sym"][i], "score": g("score"), "held": g("held") == 1, "net": g("net"),
                        "dd": None if g("dd") is None else abs(g("dd")), "trades": g("trades"), "win": g("win"), "pf": g("pf"),
-                       "edge": g("edge"), "add6": g("add6"), "rep": c["repaint"][i], "dir": c["dir"][i], "checked": checked,
+                       "edge": g("edge"), "add6": g("add6"), "acct": c["acct"][i], "acct_dd": c["acct_dd"][i], "rep": c["repaint"][i], "dir": c["dir"][i], "checked": checked,
                        "v": verdict(g("held") == 1, c["fills"][i], c["repaint"][i], c["luck"][i], g("win"), g("pf"))}
                 for l, members in lists.items():
                     if members is None or row["sym"] in members:
@@ -86,13 +86,14 @@ def main():
         print(f"{tf}: {n} backtests", flush=True)
 
     cols = ["sid", "src", "tf", "dir", "stocks", "traded", "held", "good", "solid", "avoid", "cons", "score", "net", "dd", "win", "pf",
-            "trades", "beat", "add6", "rep", "checked", "best"]
+            "trades", "beat", "add6", "acct", "acct_dd", "acct_pos", "rep", "checked", "best"]
     for (l, fl), g in groups.items():
         rows = []
         for (sid, src, tf), rs in g.items():
             traded = [r for r in rs if r["trades"]]
             held = [r for r in rs if r["held"]]
-            good = [r for r in held if r["v"] != "avoid"]
+            # held up, not Avoid, and — where the realistic re-run exists — the account at the script's own size ended up
+            good = [r for r in held if r["v"] != "avoid" and (r["acct"] is None or r["acct"] > 0)]
             reps = {r["rep"] for r in rs}
             best = sorted(good, key=lambda r: -(r["score"] or 0))[:8]
             rows.append([sid, src, tf, rs[0]["dir"], len(rs), len(traded), len(held), len(good),
@@ -102,6 +103,10 @@ def main():
                          med([r["win"] for r in traded]), med([r["pf"] for r in traded]), med([r["trades"] for r in traded]),
                          round(100 * sum((r["edge"] or 0) > 0 for r in traded) / len(traded), 1) if traded else None,
                          med([r["add6"] for r in traded]),
+                         # the money view: account return / drawdown at the script's own position size (realistic re-runs)
+                         med([r["acct"] for r in rs]), med([r["acct_dd"] for r in rs]),
+                         (round(100 * sum((r["acct"] or 0) > 0 for r in rs if r["acct"] is not None) / sum(r["acct"] is not None for r in rs))
+                          if any(r["acct"] is not None for r in rs) else None),
                          "repaints" if "repaints" in reps else "clean" if reps == {"clean"} else None,
                          sum(r["checked"] for r in rs),
                          [[r["sym"], r["score"], r["net"]] for r in best]])

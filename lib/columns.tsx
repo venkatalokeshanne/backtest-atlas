@@ -23,8 +23,8 @@ export function checksOf(r: Run): Check[] {
   const c: Check[] = [];
   c.push(r.held ? { label: "Held up", state: "pass", hint: "Made money per trade early and recently, and beat holding the stock" }
     : { label: "Did not hold up", state: "warn", hint: "Lost money per trade early or recently, or did not beat holding the stock" });
-  c.push(r.fills === "survives" ? { label: "Survives realistic fills", state: "pass", hint: "Still profitable overall and over the last 6 months with realistic fills (exits from the next bar, stop before target, close-based trailing, spread)" }
-    : r.fills === "fails" ? { label: "Fails realistic fills", state: "fail", hint: "Loses money (overall or over the last 6 months) once fills are realistic" }
+  c.push(r.fills === "survives" ? { label: "Survives realistic fills", state: "pass", hint: "Still profitable overall and over the last 6 months with realistic fills (exits from the next bar, stop before target, close-based trailing, spread), and the account at the script's own position size ended up" }
+    : r.fills === "fails" ? { label: "Fails realistic fills", state: "fail", hint: "Loses money (overall, over the last 6 months, or in the account at the script's own position size) once fills are realistic" }
     : { label: "Not fill-checked", state: "unknown", hint: r.src === "ts" ? "TrendSpider results come from its own tester and cannot be re-run with realistic fills" : "No realistic-fill re-run for this backtest" });
   c.push(r.repaint === "clean" ? { label: "No repaint", state: "pass", hint: "Same trades when re-run with closed bars only, and nothing that behaves differently live" }
     : r.repaint === "repaints" ? { label: "Repaints", state: "fail", hint: "Trades changed when re-run with closed bars only: the backtest used future data" }
@@ -71,10 +71,11 @@ export const COLUMNS: Col[] = [
     hint: "0–100: consistency 20%, breadth across stocks 25%, edge 20%, practicality 15%, recent 6 months 20% (TradingView); ×0.6 when Check fills" },
   { key: "spark", label: "Net % (graph)", kind: "number", get: () => null, render: (r) => <Spark v={(r as any).spark} />,
     hint: "Running sum of per-trade net %; stored for each stock's top TradingView backtests" },
-  { key: "net", label: "Net %", kind: "number", defaultOn: true, get: (r) => n(r.net), render: (r) => signed(r.net) },
-  { key: "win", label: "Win Rate %", kind: "number", defaultOn: true, get: (r) => n(r.win), render: (r) => num(r.win, 1) },
+  { key: "net", label: "Net %", kind: "number", defaultOn: true, get: (r) => n(r.net), render: (r) => signed(r.net),
+    hint: "TradingView: sum of the per-trade net % returns (commission in, not compounded). A trade is one position, from entry until flat: partial take-profits are part of it and scale-ins form one campaign, its return = P&L / capital entered" },
+  { key: "win", label: "Win Rate %", kind: "number", defaultOn: true, get: (r) => n(r.win), render: (r) => num(r.win, 1), hint: "Share of trades (positions) that made money. A trade is one position, from entry until flat: partial take-profits are part of it and scale-ins form one campaign, its return = P&L / capital entered" },
   { key: "pf", label: "Profit Factor", kind: "number", defaultOn: true, get: (r) => n(r.pf), render: (r) => num(r.pf) },
-  { key: "trades", label: "Trades", kind: "number", defaultOn: true, get: (r) => n(r.trades), render: (r) => int(r.trades) },
+  { key: "trades", label: "Trades", kind: "number", defaultOn: true, get: (r) => n(r.trades), render: (r) => int(r.trades), hint: "A trade is one position, from entry until flat: partial take-profits are part of it and scale-ins form one campaign, its return = P&L / capital entered" },
   { key: "dd", label: "DrawDown", kind: "number", defaultOn: true, get: (r) => (r.dd == null ? null : Math.abs(r.dd)),
     render: (r) => <span className="text-loss">{r.dd == null ? "—" : num(Math.abs(r.dd), 1)}</span>,
     hint: "TradingView: points of the running trade sum; TrendSpider: % of equity" },

@@ -12,7 +12,8 @@ type Top = {
   sid: string; src: "tv" | "ts"; tf: string; dir: string | null;
   stocks: number; traded: number; held: number; good: number; solid: number; avoid: number; cons: number;
   score: number | null; net: number | null; dd: number | null; win: number | null; pf: number | null; trades: number | null;
-  beat: number | null; add6: number | null; rep: "clean" | "repaints" | null; checked: number;
+  beat: number | null; add6: number | null; acct: number | null; acct_dd: number | null; acct_pos: number | null;
+  rep: "clean" | "repaints" | null; checked: number;
   best: [sym: string, score: number | null, net: number | null][];
 };
 type TopFile = { generated: string; list: string; fills: string; stocks: number; cols: string[]; rows: any[][] };
@@ -40,7 +41,10 @@ const COLS: Col[] = [
   { key: "net", label: "Net %", right: true, hint: "Median net % over the stocks it traded on" },
   { key: "dd", label: "DrawDown", right: true, hint: "Median maximum drawdown over the stocks it traded on" },
   { key: "add6", label: "Avg Monthly DD", right: true, hint: "Median of the average monthly drawdown over the last 6 months" },
-  { key: "win", label: "Win %", right: true, hint: "Median win rate" },
+  { key: "acct", label: "Account %", right: true,
+    hint: "The money view: median account return over the whole test at the script's own position size (realistic fills), and the share of stocks where the account ended up. Net % adds up per-trade returns as if every trade used the same money; this does not" },
+  { key: "acct_dd", label: "Account DD", right: true, hint: "Median account drawdown at the script's own position size (realistic fills), open trades included" },
+  { key: "win", label: "Win %", right: true, hint: "Median win rate (a trade = one position: partial exits and scale-ins merged)" },
   { key: "pf", label: "PF", right: true, hint: "Median profit factor" },
   { key: "trades", label: "Trades", right: true, hint: "Median number of trades per stock" },
   { key: "beat", label: "Beat B&H", right: true, hint: "Share of stocks where it beat simply holding the stock" },
@@ -200,6 +204,11 @@ export default function TopStrategiesView() {
                     <td className="num whitespace-nowrap px-3 py-2 text-right"><span className={tone(r.net)}>{pct(r.net, 1)}</span></td>
                     <td className="num px-3 py-2 text-right text-loss">{num(r.dd, 1)}</td>
                     <td className="num px-3 py-2 text-right text-loss">{num(r.add6, 1)}</td>
+                    <td className="num whitespace-nowrap px-3 py-2 text-right">
+                      <span className={tone(r.acct)}>{pct(r.acct, 1)}</span>
+                      {r.acct_pos != null && <span className="ml-1 text-[0.7rem] text-ink-faint" title="Share of stocks where the account ended up">{num(r.acct_pos, 0)}% up</span>}
+                    </td>
+                    <td className="num px-3 py-2 text-right text-loss">{num(r.acct_dd, 1)}</td>
                     <td className="num px-3 py-2 text-right">{num(r.win, 1)}</td>
                     <td className="num px-3 py-2 text-right">{num(r.pf)}</td>
                     <td className="num px-3 py-2 text-right">{int(r.trades)}</td>

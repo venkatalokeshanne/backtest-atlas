@@ -370,7 +370,7 @@ function Recent({ run, detail }: { run: Run; detail: RunDetail | null }) {
               </div>
             ))}
           </div>
-          <p className="mt-1.5 text-[0.7rem] text-ink-faint">Closed trades only, counted in the month they closed (a trade held for months lands entirely in its exit month). Sum of per-trade net %; DD = largest fall of that sum inside the month. *Month to date.</p>
+          <p className="mt-1.5 text-[0.7rem] text-ink-faint">Closed trades only (a trade = a whole position, partial exits included), counted in the month they closed (a trade held for months lands entirely in its exit month). Sum of per-trade net %; DD = largest fall of that sum inside the month. *Month to date.</p>
         </div>
       ) : (
         run.src === "ts" && <p className="mt-2 text-xs text-ink-faint">TrendSpider's own figures as of its run on {run.asof}; it reports no month-by-month breakdown.</p>

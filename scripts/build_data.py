@@ -56,7 +56,9 @@ def load_periods():
 def load_strict():
     """Realistic-fill re-runs (pine_screen/strict_runner.py): (ticker, tf, strategy) -> record."""
     out = {}
-    for f in glob.glob(str(SCREEN / "strict" / "*" / "*.jsonl")):
+    # strict_pos/: the same records with the trade statistics recomputed per position (pine_screen/restat.py)
+    src = SCREEN / "strict_pos" if (SCREEN / "strict_pos").exists() else SCREEN / "strict"
+    for f in glob.glob(str(src / "*" / "*.jsonl")):
         for line in open(f, encoding="utf-8"):
             try: x = json.loads(line)
             except Exception: continue
@@ -253,7 +255,11 @@ def realistic(r, x, b, rep, tested):
     if rep == "repaints": score = None
     net, pf = r.get("net_profit_pct"), r.get("profit_factor")
     six = pr["p6m"] if pr else {}
-    survives = (pf or 0) > 1 and (net or 0) > 0 and (not six.get("n") or (six.get("net") or 0) > 0)
+    # profitable with realistic fills: per trade, over the last 6 months, AND in money — the account at the script's own
+    # position size must end up (a script can win per position while its sizing or scale-ins wipe the account out)
+    acct = r.get("acct")
+    survives = ((pf or 0) > 1 and (net or 0) > 0 and (not six.get("n") or (six.get("net") or 0) > 0)
+                and (acct is None or acct > 0))
     out = dict(empty)
     out.update({
         "fills": "survives" if survives else "fails", "r_score": score, "r_held": pine_held(r),
@@ -316,9 +322,11 @@ def write_columnar(folder, name, c):
 def main():
     t0 = time.time()
     names = json.loads((SCREEN / "symbols.json").read_text(encoding="utf-8")) if (SCREEN / "symbols.json").exists() else {}
-    curves = json.loads((SCREEN / "curves.json").read_text(encoding="utf-8")) if (SCREEN / "curves.json").exists() else {}
+    pick = lambda a, b: SCREEN / a if (SCREEN / a).exists() else SCREEN / b      # *_pos: one point per position (restat.py)
+    cf, rcf = pick("curves_pos.json", "curves.json"), pick("curves_strict_pos.json", "curves_strict.json")
+    curves = json.loads(cf.read_text(encoding="utf-8")) if cf.exists() else {}
     # the same backtests' curves with realistic fills (pine_screen/curves.py, strict model)
-    r_curves = json.loads((SCREEN / "curves_strict.json").read_text(encoding="utf-8")) if (SCREEN / "curves_strict.json").exists() else {}
+    r_curves = json.loads(rcf.read_text(encoding="utf-8")) if rcf.exists() else {}
     prows, pstrat = pine_rows()
     periods = load_periods()
     strict = load_strict()
